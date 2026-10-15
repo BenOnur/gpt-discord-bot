@@ -44,7 +44,7 @@ def get_current_time(timezone: str = "Europe/Istanbul") -> str:
 
     now = datetime.now(tz)
     day_name = _DAYS_TR.get(now.weekday(), "")
-    month_name = _MONTHS_TR.get(now.month(), "")
+    month_name = _MONTHS_TR.get(now.month, "")
 
     formatted_date = f"{now.day} {month_name} {now.year} {day_name}"
     formatted_time = now.strftime("%H:%M:%S")
