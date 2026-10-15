@@ -33,7 +33,7 @@ def daily_recap(hours: int = 24) -> str:
 
         # Query messages from the specified time window
         rows = db.execute(
-            """SELECT id, channel_id, author, name, content, created, url
+            """SELECT id, channel, author, name, content, created, url
                FROM messages
                WHERE created >= ?
                ORDER BY id DESC LIMIT 300""",
@@ -44,7 +44,7 @@ def daily_recap(hours: int = 24) -> str:
         is_fallback = False
         if len(rows) < 15:
             rows = db.execute(
-                """SELECT id, channel_id, author, name, content, created, url
+                """SELECT id, channel, author, name, content, created, url
                    FROM messages
                    ORDER BY id DESC LIMIT 100""",
             ).fetchall()
