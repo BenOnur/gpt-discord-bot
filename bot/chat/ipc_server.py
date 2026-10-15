@@ -166,6 +166,13 @@ async def start_ipc_server(discord_bot: discord.Client) -> asyncio.Server:
                 resp = await _handle_tts(discord_bot, req)
             elif action == "channels":
                 resp = await _handle_channels(discord_bot)
+            elif action == "members":
+                g = discord_bot.guilds[0] if discord_bot.guilds else None
+                if not g:
+                    resp = {"ok": False, "error": "Bot sunucuya bağlı değil"}
+                else:
+                    m_list = [{"id": m.id, "name": m.name, "nick": m.nick, "display_name": m.display_name, "bot": m.bot} for m in g.members]
+                    resp = {"ok": True, "guild": g.name, "members": m_list}
             elif action == "ping":
                 resp = {"ok": True, "status": "online", "user": str(discord_bot.user)}
             else:
