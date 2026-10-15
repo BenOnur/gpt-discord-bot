@@ -11,6 +11,15 @@ show_embed_color: false
 allow_dms: false
 enable_voice: false
 enable_message_content: false # Mention/reply chat works without privileged content access.
+memory:
+  enabled: false # Enable together with Discord's Message Content Intent.
+  guild_ids: [] # Explicit server scope; no DMs.
+  excluded_channel_ids: []
+  data_dir: /var/lib/discord-ai-memory
+  command: /opt/discord-memory-venv/bin/bm
+  model: groq/openai/gpt-oss-120b
+  analysis_interval_seconds: 300
+  max_analysis_calls_per_day: 40
 enable_scheduled_tasks: false
 system_prompt: "Kullanıcıyla Türkçe konuş. Kısa ve anlaşılır yanıt ver."
 persona: sunucu-kankasi

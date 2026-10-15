@@ -23,6 +23,7 @@ load_dotenv()
 from bot.config.loader import get_config as load_config_with_validation
 from bot.config.personas import try_load_persona, list_personas
 from bot.config.tasks import load_scheduled_tasks
+from bot.memory import DiscordMemory
 from bot.discord.errors import notify_admin_error as core_notify_admin_error, handle_app_command_error
 from bot.llm.errors import parse_error_message
 from bot.llm.ollama_service import OllamaService
@@ -75,6 +76,7 @@ def build_extra_body(provider_cfg: dict, model_params: Any, exclude: set[str] | 
 
 
 config = get_config()
+memory = DiscordMemory(config)
 curr_model = next(iter(config["models"]))
 # Detect initial persona: model-specific > global
 model_params = config["models"].get(curr_model, {})
@@ -480,6 +482,7 @@ async def persona_autocomplete(interaction: discord.Interaction, curr_str: str) 
 
 @discord_bot.event
 async def on_ready() -> None:
+    memory.start(discord_bot)
     if client_id := config.get("client_id"):
         logging.info(f"\n\nBOT INVITE URL:\nhttps://discord.com/oauth2/authorize?client_id={client_id}&permissions=412317191168&scope=bot\n")
     # Load voice cog BEFORE syncing commands so its commands are included
@@ -498,8 +501,20 @@ async def on_ready() -> None:
 
 
 @discord_bot.event
+async def on_message_edit(before: discord.Message, after: discord.Message) -> None:
+    try:
+        await memory.capture(after)
+    except Exception as exc:
+        logging.warning("Memory edit capture unavailable (%s)", type(exc).__name__)
+
+
+@discord_bot.event
 async def on_message(new_msg: discord.Message) -> None:
     global last_task_time
+    try:
+        await memory.capture(new_msg)
+    except Exception as exc:
+        logging.warning("Memory capture unavailable (%s)", type(exc).__name__)
 
     # CRITICAL: Check if message is from ourselves FIRST, before any processing
     # This must be first to prevent processing our own messages (which trigger on_message when we reply)
@@ -683,6 +698,10 @@ async def on_message(new_msg: discord.Message) -> None:
         sys_prompt = format_system_prompt(sys_prompt, accept_usernames)
 
     # Build API messages
+    try:
+        sys_prompt += await asyncio.wait_for(memory.recall(new_msg), timeout=20)
+    except Exception as exc:
+        logging.warning("Memory recall unavailable (%s)", type(exc).__name__)
     api_messages = []
     for m in messages[::-1]:
         if isinstance(m.get("content"), list):
