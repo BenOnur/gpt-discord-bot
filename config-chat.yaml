@@ -1,0 +1,43 @@
+# First-stage setup: chat only. No persona, tools, voice or scheduled tasks.
+# Secrets are injected by /etc/discord-ai-bot/env on the VDS.
+bot_token: ${DISCORD_BOT_TOKEN}
+client_id: ${DISCORD_CLIENT_ID}
+status_message: Gemini + Groq
+max_text: 12000
+max_images: 0
+max_messages: 12
+use_plain_responses: true
+show_embed_color: false
+allow_dms: false
+enable_voice: false
+enable_scheduled_tasks: false
+system_prompt: "Kullanıcıyla Türkçe konuş. Kısa ve anlaşılır yanıt ver."
+permissions:
+  users:
+    admin_ids: []
+    allowed_ids: []
+    blocked_ids: []
+  roles:
+    allowed_ids: []
+    blocked_ids: []
+  channels:
+    allowed_ids: [] # Restrict to the chosen test channel before starting.
+    blocked_ids: []
+providers:
+  google:
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    api_key: ${GEMINI_API_KEY}
+  groq:
+    base_url: https://api.groq.com/openai/v1
+    api_key: ${GROQ_API_KEY}
+models:
+  google/gemini-3.5-flash-lite:
+    tools: []
+    supports_tools: false
+    max_tokens: 1024
+  groq/llama-3.3-70b-versatile:
+    tools: []
+    supports_tools: false
+    max_tokens: 1024
+# Enable fallback only after both accounts/models pass the live probe.
+fallback_models: []

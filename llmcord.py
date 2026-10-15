@@ -483,8 +483,9 @@ async def on_ready() -> None:
     if client_id := config.get("client_id"):
         logging.info(f"\n\nBOT INVITE URL:\nhttps://discord.com/oauth2/authorize?client_id={client_id}&permissions=412317191168&scope=bot\n")
     # Load voice cog BEFORE syncing commands so its commands are included
-    from bot.voice import setup_voice_cog
-    await setup_voice_cog(discord_bot, config)
+    if config.get("enable_voice", True):
+        from bot.voice import setup_voice_cog
+        await setup_voice_cog(discord_bot, config)
     # Sync to all guilds
     await discord_bot.tree.sync()
     # Log all registered commands
@@ -516,8 +517,7 @@ async def on_message(new_msg: discord.Message) -> None:
         processed_messages.add(new_msg.id)
 
     # DEBUG: Log message start
-    content_preview = new_msg.content[:50].replace('\n', ' ')
-    logging.info(f"MSG_START: msg_id={new_msg.id} author={new_msg.author.id} channel={new_msg.channel.id} content='{content_preview}...'")
+    logging.info(f"MSG_START: msg_id={new_msg.id} author={new_msg.author.id} channel={new_msg.channel.id}")
 
     is_dm = new_msg.channel.type == discord.ChannelType.private
     if (not is_dm and discord_bot.user not in new_msg.mentions) or new_msg.author.bot:
@@ -1088,6 +1088,8 @@ def parse_cron(expr: str) -> dict[str, Any]:
 
 
 def setup_scheduled_tasks() -> None:
+    if not config.get("enable_scheduled_tasks", True):
+        return
     legacy = config.get("scheduled_tasks", {})
     if isinstance(legacy, dict) and "enabled" in legacy and "cron" in legacy:
         if legacy.get("enabled"):
