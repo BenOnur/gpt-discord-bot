@@ -32,8 +32,11 @@ async def _async_voice_speak(text: str, target_user: str | None, ctx: dict[str, 
     # 1. Determine target voice channel
     voice_channel = None
 
-    # Check author's voice state
-    if author and hasattr(author, "voice") and author.voice and author.voice.channel:
+    # Check author's voice state (resolve as guild member to ensure accurate voice state)
+    member = guild.get_member(author.id) if (guild and author) else None
+    if member and member.voice and member.voice.channel:
+        voice_channel = member.voice.channel
+    elif author and hasattr(author, "voice") and author.voice and author.voice.channel:
         voice_channel = author.voice.channel
 
     # If target_user specified, search that user's voice state
