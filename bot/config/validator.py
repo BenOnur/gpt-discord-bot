@@ -90,7 +90,14 @@ def validate_config(cfg: dict[str, Any], config_path: str = "config.yaml") -> No
                                 f"got {type(tools).__name__}"
                             )
                         else:
-                            valid_tools = {"web_search", "visuals_core", "get_market_prices", "get_weather"}
+                            try:
+                                from bot.llm.tools.registry import build_tool_registry
+                                valid_tools = set(build_tool_registry().keys())
+                            except Exception:
+                                valid_tools = {
+                                    "web_search", "visuals_core", "get_market_prices",
+                                    "get_weather", "calculate", "get_current_time", "wikipedia_search"
+                                }
                             for tool in tools:
                                 if tool not in valid_tools:
                                     warnings.append(
