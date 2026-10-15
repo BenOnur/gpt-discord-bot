@@ -4,6 +4,9 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace as Obj
 import unittest
+import json
+import tiktoken
+from unittest.mock import patch, AsyncMock
 
 from bot.memory import DiscordMemory
 
@@ -68,6 +71,32 @@ class MemoryTests(unittest.TestCase):
         path=Path(self.tmp.name)/"disabled"
         DiscordMemory({"memory":{"enabled":False,"data_dir":str(path)}})
         self.assertFalse(path.exists())
+
+    def test_payload_budget_includes_metadata_and_preserves_full_archive(self):
+        for mid in range(1,81):
+            self.memory.save(msg(mid,content="Türkçe sohbet ve kaynak bilgisi. "*20))
+        batch=self.memory.pending()
+        payload="\n".join(json.dumps({k:r[k] for k in ("id","author","name","created","content","url")},ensure_ascii=False) for r in batch)
+        self.assertLessEqual(len(tiktoken.get_encoding("o200k_base").encode(payload)),3550)
+        self.assertLess(len(batch),80)
+        self.memory.save(msg(0,content="😀"*12000))
+        row=self.memory.pending()[0]
+        self.assertLess(len(row["content"]),12000)
+        with self.memory.db() as db:
+            self.assertEqual(len(db.execute("SELECT content FROM messages WHERE id=0").fetchone()[0]),12000)
+
+    def test_empty_historical_message_does_not_block_later_messages(self):
+        async def history(**kw):
+            yield msg(1,content="")
+            yield msg(2,content="A real message after a sticker")
+        channel=Obj(id=20,history=history,permissions_for=lambda m:Obj(view_channel=True,read_message_history=True))
+        guild=Obj(id=30,me=Obj(id=99),text_channels=[channel],threads=[],channels=[])
+        with patch("bot.memory.asyncio.sleep",new=AsyncMock(side_effect=asyncio.CancelledError)):
+            with self.assertRaises(asyncio.CancelledError):
+                asyncio.run(self.memory.backfill(Obj(guilds=[guild])))
+        self.assertEqual([r["id"] for r in self.memory.pending()],[2])
+        with self.memory.db() as db:
+            self.assertEqual(db.execute("SELECT id FROM cursors WHERE channel=20").fetchone()[0],2)
 
 
 if __name__ == "__main__":

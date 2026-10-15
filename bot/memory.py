@@ -4,6 +4,7 @@ The archive and knowledge base belong only to this bot. No shell/model tools are
 exposed to Discord users. Retrieved notes are data, never system instructions.
 """
 import asyncio
+from contextlib import contextmanager
 import json
 import logging
 import os
@@ -51,10 +52,15 @@ class DiscordMemory:
                     END;
                 """)
 
+    @contextmanager
     def db(self):
         db = sqlite3.connect(self.root / "archive.sqlite3", timeout=10)
         db.row_factory = sqlite3.Row
-        return db
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
 
     def accepts(self, message):
         return (self.enabled and message.guild is not None
@@ -142,12 +148,9 @@ class DiscordMemory:
                     try:
                         async for message in channel.history(limit=None, oldest_first=True,
                                 after=discord.Object(id=cursor) if cursor else None):
-                            # Without privileged content, Discord returns empty bodies.
-                            # Do not advance past inaccessible human messages.
-                            if (not message.author.bot and not message.content and not message.attachments
-                                    and not message.embeds and message.type in (discord.MessageType.default,discord.MessageType.reply)):
-                                logging.warning("Memory: content unavailable channel=%s; history deferred", channel.id)
-                                break
+                            # Empty bodies also occur in valid sticker-only/deleted
+                            # embed messages. With the enabled gateway intent, they
+                            # must not stall all later history in the channel.
                             await self.capture(message)
                             with self.db() as db:
                                 db.execute("INSERT OR REPLACE INTO cursors VALUES(?,?)", (channel.id,message.id))

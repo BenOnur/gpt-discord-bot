@@ -2,6 +2,8 @@
 
 Motor: [Basic Memory](https://github.com/basicmachines-co/basic-memory), sabit `basic-memory==0.23.2`, ayrı Python ortamı. Yerel sürüm ücretsizdir; AGPL-3.0 lisanslıdır. Basic Memory dosya/not/indeks motorudur; Discord dinleme, geçmiş tarama ve otomatik not çıkarma bu repodaki `bot/memory.py` adaptöründedir. Mevcut bot/kişilik ve Gemini/Groq korunur.
 
+Çalışma yeri yalnız VDS'tir: bot, arşiv, indeks, notlar ve zamanlayıcı sunucudadır. Bilgisayarda çalışan bir parça, Obsidian uygulaması, ağ diski, tünel veya senkronizasyon gerekmez. Discord hafızası Hermes Agent'ın `/home/hermes/Beyin` kasasından ve kişisel Beyin Git deposundan bağımsızdır. `discord-ai` kullanıcısı ve systemd `ProtectHome=true` sınırı Hermes kasasını okuyamaz. Ham mesajlar/notlar bilgisayara veya GitHub'a senkronize edilmez; GitHub yalnız uygulama kodudur.
+
 ## Akış
 
 - `memory.guild_ids` sunucularının botça erişilebilen insan mesajları, etiket gerekmeksizin yerel SQLite arşivine yazılır. DM ve bot mesajları alınmaz. `excluded_channel_ids` kapsam dışıdır.
