@@ -21,6 +21,12 @@ memory:
   analysis_interval_seconds: 300
   max_analysis_calls_per_day: 40
 enable_scheduled_tasks: false
+spontaneous_chat:
+  enabled: true
+  cooldown_seconds: 900 # 15 minutes between spontaneous interjections
+  min_user_messages: 12 # Minimum user messages accumulated before chiming in
+  probability: 0.15 # 15% random chance when threshold is reached
+  boost_probability: 0.40 # 40% chance if drama/tilt keywords or ALL CAPS detected
 system_prompt: "Kullanıcıyla Türkçe konuş. Kısa ve anlaşılır yanıt ver."
 persona: sunucu-kankasi
 permissions:

@@ -552,8 +552,32 @@ async def on_message(new_msg: discord.Message) -> None:
     logging.info(f"MSG_START: msg_id={new_msg.id} author={new_msg.author.id} channel={new_msg.channel.id}")
 
     is_dm = new_msg.channel.type == discord.ChannelType.private
-    if (not is_dm and discord_bot.user not in new_msg.mentions) or new_msg.author.bot:
-        logging.debug(f"MSG_SKIP: msg_id={new_msg.id} is_dm={is_dm} mentioned={discord_bot.user in new_msg.mentions} is_bot={new_msg.author.bot}")
+    if new_msg.author.bot:
+        return
+
+    # Check if the message is a reply to the bot
+    is_reply_to_bot = (
+        bool(new_msg.reference)
+        and bool(getattr(new_msg.reference, "resolved", None))
+        and getattr(new_msg.reference.resolved, "author", None) == discord_bot.user
+    )
+    is_mentioned = discord_bot.user in new_msg.mentions or is_reply_to_bot
+
+    if not is_dm and not is_mentioned:
+        # Untagged message in server: check zero-token spontaneous banter
+        try:
+            from bot.chat.spontaneous import maybe_handle_spontaneous
+            cfg = await asyncio.to_thread(get_config)
+            await maybe_handle_spontaneous(
+                new_msg,
+                cfg,
+                curr_model,
+                curr_persona,
+                build_openai_client,
+                try_load_persona,
+            )
+        except Exception as exc:
+            logging.warning(f"Error in maybe_handle_spontaneous: {exc}")
         return
 
     role_ids = set(role.id for role in getattr(new_msg.author, "roles", ()))
@@ -907,6 +931,11 @@ async def on_message(new_msg: discord.Message) -> None:
                             await new_msg.add_reaction("🔊")
                         except Exception:
                             pass
+                        try:
+                            from bot.chat.spontaneous import spontaneous_manager
+                            spontaneous_manager.record_bot_activity(new_msg.channel.id)
+                        except Exception:
+                            pass
                         break
 
                     if text:
@@ -963,6 +992,13 @@ async def on_message(new_msg: discord.Message) -> None:
     for rm in response_msgs:
         msg_nodes[rm.id].text = strip_thinking("".join(response_contents))
         msg_nodes[rm.id].lock.release()
+
+    if response_msgs:
+        try:
+            from bot.chat.spontaneous import spontaneous_manager
+            spontaneous_manager.record_bot_activity(new_msg.channel.id)
+        except Exception:
+            pass
 
     if (n := len(msg_nodes)) > MAX_MESSAGE_NODES:
         for mid in sorted(msg_nodes.keys())[:n - MAX_MESSAGE_NODES]:
