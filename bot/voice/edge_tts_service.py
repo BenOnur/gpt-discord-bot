@@ -70,22 +70,56 @@ async def synthesize_speech(
             if attempt < retries:
                 await asyncio.sleep(0.8)
 
-    # 2. Fallback to gTTS (unfiltered Turkish voice - handles swear words and raw slang)
+    # 2. Fallback to gTTS with male pitch transform (unfiltered Turkish voice - handles swear words and raw slang)
     logger.info("Attempting gTTS fallback for text: %s", clean_text[:60])
     try:
         from gtts import gTTS
+        import subprocess
 
         def _generate_gtts():
-            tts = gTTS(text=clean_text, lang="tr")
-            tts.save(output_path)
+            raw_path = output_path + ".raw.mp3"
+            try:
+                tts = gTTS(text=clean_text, lang="tr")
+                tts.save(raw_path)
+
+                # Transform female gTTS audio into a natural adult male voice using FFmpeg
+                # asetrate=24000*0.80 lowers pitch and vocal tract formants by 20% to male vocal range,
+                # aresample=24000 restores standard 24kHz sample rate, atempo=1.25 restores normal speaking speed.
+                cmd = [
+                    "ffmpeg", "-y", "-i", raw_path,
+                    "-af", "asetrate=24000*0.80,aresample=24000,atempo=1.25",
+                    output_path,
+                ]
+                res = subprocess.run(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=15,
+                )
+                if res.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 100:
+                    return
+                # If ffmpeg returned error, fallback to raw audio
+                if os.path.exists(raw_path):
+                    os.replace(raw_path, output_path)
+            except Exception as fe:
+                logger.warning("Pitch shifting failed (%s), using raw audio", fe)
+                if os.path.exists(raw_path):
+                    os.replace(raw_path, output_path)
+            finally:
+                if os.path.exists(raw_path):
+                    try:
+                        os.remove(raw_path)
+                    except OSError:
+                        pass
 
         await asyncio.to_thread(_generate_gtts)
 
         if os.path.exists(output_path) and os.path.getsize(output_path) > 100:
-            logger.info("gTTS fallback succeeded, file size: %d bytes", os.path.getsize(output_path))
+            logger.info("gTTS fallback (male pitch-shifted) succeeded, file size: %d bytes", os.path.getsize(output_path))
             return output_path
         else:
             raise RuntimeError("gTTS output file is empty or missing")
     except Exception as gtts_err:
         logger.error("gTTS fallback failed: %s", gtts_err)
         raise RuntimeError(f"All speech synthesis providers failed (Edge-TTS and gTTS): {gtts_err}")
+

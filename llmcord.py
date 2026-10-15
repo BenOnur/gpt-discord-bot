@@ -899,6 +899,16 @@ async def on_message(new_msg: discord.Message) -> None:
                             ),
                             timeout=RESPONSE_TIMEOUT_SECONDS,
                         )
+
+                    from bot.llm.tools.discord_ctx import get_current_discord_context
+                    ctx = get_current_discord_context()
+                    if ctx.get("suppress_chat_reply"):
+                        try:
+                            await new_msg.add_reaction("🔊")
+                        except Exception:
+                            pass
+                        break
+
                     if text:
                         chunks = [text[i:i+max_len] for i in range(0, len(text), max_len)]
                         response_contents.extend(chunks)

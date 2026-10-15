@@ -90,6 +90,10 @@ async def _async_voice_speak(text: str, target_user: str | None, ctx: dict[str, 
         if vc.is_connected():
             await vc.disconnect(force=True)
 
+        # Mark chat reply suppression so bot doesn't clutter text channel after speaking in voice
+        if isinstance(ctx, dict):
+            ctx["suppress_chat_reply"] = True
+
         return f"Ses kanalına ({voice_channel.name}) girildi ve şu söz sesli olarak söylendi: {text}"
     except Exception as e:
         logger.error("Voice playback error in voice_speak: %s", e)
@@ -138,7 +142,7 @@ VOICE_SPEAK_SCHEMA = {
     "type": "function",
     "function": {
         "name": "voice_speak",
-        "description": "Join the user's voice channel in Discord, speak the given text aloud with Turkish Edge-TTS (Ahmet voice), and disconnect.",
+        "description": "Join the user's voice channel in Discord, speak the given text aloud with a masculine/male voice, and disconnect. Automatically suppresses redundant chat messages.",
         "parameters": {
             "type": "object",
             "properties": {
