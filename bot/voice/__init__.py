@@ -143,47 +143,39 @@ class VoiceCog(commands.Cog):
             )
             return
         
-        # Check if TTS is configured
-        if not self.tts:
-            await interaction.response.send_message(
-                "❌ TTS is not configured. Add Azure Speech credentials to config.yaml.",
-                ephemeral=True
-            )
-            return
-        
         await interaction.response.send_message(
             "🎤 Speaking...",
             ephemeral=True
         )
         
         try:
-            # Generate TTS audio (MP3 bytes)
-            audio_bytes = self.tts.speak(text)
-            
-            # Save to temp file - FFmpegOpusAudio needs a file path
-            import tempfile
-            import os
-            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
-                f.write(audio_bytes)
-                temp_path = f.name
+            temp_path = None
+            if self.tts:
+                audio_bytes = self.tts.speak(text)
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
+                    f.write(audio_bytes)
+                    temp_path = f.name
+            else:
+                from .edge_tts_service import synthesize_speech
+                temp_path = await synthesize_speech(text)
             
             try:
-                # Create audio source from temp file
-                audio_source = discord.FFmpegOpusAudio(source=temp_path, bitrate=128)
-                
-                # Play audio
+                import os
+                audio_source = discord.FFmpegPCMAudio(source=temp_path)
                 voice_client.play(audio_source)
                 
                 await interaction.followup.send(
                     f"✅ Speaking: {text[:100]}...",
                     ephemeral=True
                 )
-            finally:
-                # Clean up temp file after playback starts
-                try:
-                    os.unlink(temp_path)
-                except Exception:
-                    pass
+            except Exception as play_err:
+                if temp_path and os.path.exists(temp_path):
+                    try:
+                        os.unlink(temp_path)
+                    except Exception:
+                        pass
+                raise play_err
         except Exception as e:
             logger.error(f"TTS failed: {e}")
             await interaction.followup.send(

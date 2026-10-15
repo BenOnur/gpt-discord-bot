@@ -116,6 +116,27 @@ class ToolsTest(unittest.TestCase):
         res = react_to_message("💀")
         self.assertIn("Discord mesaj bağlamı bulunamadı", res)
 
+    def test_daily_recap_basic(self):
+        from bot.llm.tools.daily_recap import daily_recap
+        res = daily_recap(24)
+        self.assertTrue(isinstance(res, str))
+        self.assertTrue(len(res) > 0)
+
+    def test_drama_judge_basic(self):
+        from bot.llm.tools.drama_judge import drama_judge
+        res = drama_judge("Ahmet", "Mehmet", "CS2 maçında infoyu bilerek yanlış verdi")
+        self.assertIn("DİSCORD SUNUCU MAHKEMESİ", res)
+        self.assertIn("Ahmet", res)
+        self.assertIn("Mehmet", res)
+
+    def test_voice_speak_basic(self):
+        from bot.llm.tools.voice_speak import voice_speak
+        # Empty text
+        self.assertIn("Söylenecek bir metin belirtilmedi", voice_speak(""))
+        # Without Discord loop
+        res = voice_speak("Ahmet ayağını denk al")
+        self.assertIn("Ses kanalına bağlanılamadı", res)
+
     def test_tool_registry_discovery(self):
         registry = build_tool_registry()
         expected = [
@@ -131,6 +152,9 @@ class ToolsTest(unittest.TestCase):
             "get_user_profile",
             "search_server_history",
             "react_to_message",
+            "daily_recap",
+            "drama_judge",
+            "voice_speak",
         ]
         for tool_name in expected:
             self.assertIn(tool_name, registry, f"Tool '{tool_name}' should be in registry")
@@ -140,3 +164,4 @@ class ToolsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -9,7 +9,7 @@ max_messages: 12
 use_plain_responses: true
 show_embed_color: false
 allow_dms: false
-enable_voice: false
+enable_voice: true
 enable_message_content: false # Mention/reply chat works without privileged content access.
 memory:
   enabled: false # Enable together with Discord's Message Content Intent.
@@ -56,6 +56,9 @@ models:
       - get_user_profile
       - search_server_history
       - react_to_message
+      - daily_recap
+      - drama_judge
+      - voice_speak
     supports_tools: true
     max_tokens: 1024
   groq/openai/gpt-oss-120b:
