@@ -14,9 +14,13 @@ This file is the skill index for the bot. Each tool has its own skill doc under
 
 | Skill | File | Provider | Description |
 |-------|------|----------|-------------|
-| 🌐 `web_search` | [`skills/web_search.md`](bot/llm/tools/skills/web_search.md) | Any | Search the web (Brave API) |
+| 🌐 `web_search` | [`skills/web_search.md`](bot/llm/tools/skills/web_search.md) | Any | Search the web (Brave API + DuckDuckGo fallback, zero key) |
+| 🌤️ `get_weather` | [`skills/weather.md`](bot/llm/tools/skills/weather.md) | Any | Current weather & 7-day forecast (Open-Meteo, zero key) |
+| 🔢 `calculate` | [`calculate.py`](bot/llm/tools/calculate.py) | Any | Safe math arithmetic, power, root, trig evaluation |
+| ⏰ `get_current_time` | [`time_tool.py`](bot/llm/tools/time_tool.py) | Any | Real-time date, time, and weekday (Turkey / Europe/Istanbul) |
+| 📖 `wikipedia_search` | [`wikipedia.py`](bot/llm/tools/wikipedia.py) | Any | Article summaries from Wikipedia (TR/EN, zero key) |
 | 📊 `visuals_core` | [`skills/visuals_core.md`](bot/llm/tools/skills/visuals_core.md) | Any | ASCII/Markdown charts, tables, timelines |
-| 📈 `get_market_prices` | [`skills/yahoo_finance.md`](bot/llm/tools/skills/yahoo_finance.md) | Any | Stock/index prices from Yahoo Finance |
+| 📈 `get_market_prices` | [`skills/yahoo_finance.md`](bot/llm/tools/skills/yahoo_finance.md) | Any | Stock/crypto/index prices from Yahoo Finance |
 | 📧 `google_tools` | [`skills/google_tools.md`](bot/llm/tools/skills/google_tools.md) | Any | Gmail + Calendar (read-only) |
 
 ## Using skills in config.yaml

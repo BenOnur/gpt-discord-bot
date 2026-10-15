@@ -43,12 +43,26 @@ providers:
     api_key: ${GROQ_API_KEY}
 models:
   google/gemini-3.5-flash-lite:
-    tools: []
-    supports_tools: false
+    tools:
+      - web_search
+      - get_weather
+      - get_market_prices
+      - visuals_core
+      - calculate
+      - get_current_time
+      - wikipedia_search
+    supports_tools: true
     max_tokens: 1024
   groq/openai/gpt-oss-120b:
-    tools: []
-    supports_tools: false
+    tools:
+      - web_search
+      - get_weather
+      - get_market_prices
+      - visuals_core
+      - calculate
+      - get_current_time
+      - wikipedia_search
+    supports_tools: true
     max_tokens: 1024
 # Both models passed a live completion probe on the deployment account.
 fallback_models:

@@ -163,8 +163,10 @@ async def run_openai_with_tools(
     registry = build_brave_registry()
     tool_schemas = get_openai_tools(tool_names)
     msgs = list(messages)
+    loop_count = 0
 
-    while True:
+    while loop_count < 8:
+        loop_count += 1
         create_kw: dict = dict(
             model=model,
             messages=msgs,
@@ -181,20 +183,30 @@ async def run_openai_with_tools(
             break
 
         msg = choice.message
-        # Sanitise before appending: Gemini (and some others) reject content=null.
-        # Build the dict manually, only including fields that are actually set.
-        assistant_msg: dict = {"role": "assistant"}
-        if msg.content:
-            assistant_msg["content"] = msg.content
-        if msg.tool_calls:
-            assistant_msg["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                }
-                for tc in msg.tool_calls
-            ]
+        # Preserve full message fields including extra_content/thought_signature
+        # which Gemini 3.5 requires when returning tool results in multi-turn dialogues.
+        if hasattr(msg, "model_dump"):
+            assistant_msg = msg.model_dump(exclude_none=True)
+            assistant_msg["role"] = "assistant"
+            if not assistant_msg.get("content"):
+                assistant_msg.pop("content", None)
+        else:
+            assistant_msg = {"role": "assistant"}
+            if getattr(msg, "content", None):
+                assistant_msg["content"] = msg.content
+            if getattr(msg, "tool_calls", None):
+                assistant_msg["tool_calls"] = [
+                    tc if isinstance(tc, dict) else {
+                        "id": getattr(tc, "id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": getattr(getattr(tc, "function", None), "name", ""),
+                            "arguments": getattr(getattr(tc, "function", None), "arguments", ""),
+                        },
+                        **({"extra_content": getattr(tc, "extra_content", {})} if getattr(tc, "extra_content", None) else {}),
+                    }
+                    for tc in msg.tool_calls
+                ]
         msgs.append(assistant_msg)
 
         # No tool calls → we have the final answer
@@ -860,13 +872,14 @@ async def on_message(new_msg: discord.Message) -> None:
 
                 if tool_names:
                     # Tool-calling path: non-streaming, bot executes tools (Brave etc.)
-                    text = await asyncio.wait_for(
-                        run_openai_with_tools(
-                            a_client, a_model, api_messages, tool_names,
-                            a_extra_headers, a_extra_query, a_extra_body,
-                        ),
-                        timeout=RESPONSE_TIMEOUT_SECONDS,
-                    )
+                    async with new_msg.channel.typing():
+                        text = await asyncio.wait_for(
+                            run_openai_with_tools(
+                                a_client, a_model, api_messages, tool_names,
+                                a_extra_headers, a_extra_query, a_extra_body,
+                            ),
+                            timeout=RESPONSE_TIMEOUT_SECONDS,
+                        )
                     if text:
                         chunks = [text[i:i+max_len] for i in range(0, len(text), max_len)]
                         response_contents.extend(chunks)
