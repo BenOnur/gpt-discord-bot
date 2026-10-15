@@ -115,6 +115,9 @@ def analyze_personality(user_query: str = "") -> str:
             "muhammet": [556461336062590987],
             "lydiaq": [594192960380469252],
             "ebrar": [594192960380469252],
+            "nil": [999001],
+            "crimson": [999001],
+            "crimson moon": [999001],
         }
 
         # If we have target_name, find all matching author IDs

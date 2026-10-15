@@ -57,6 +57,7 @@ KNOWN_CLUSTERS = {
     "yiğit": [697793272873222295],
     "mworty": [556461336062590987],
     "Lydiaq": [594192960380469252],
+    "Nil": [999001],
 }
 
 USER_METADATA = {
@@ -69,7 +70,7 @@ USER_METADATA = {
     "sez": {
         "title": "SEZ (SEZİN BOYRAZ)",
         "real_name": "Sezin Boyraz",
-        "notes": "Kızdır (kadındır). Ona hitap ederken ve bahsederken kadın ifadeleri kullanılır.",
+        "notes": "Kızdır (kadındır). Ona hitap ederken ve bahsederken kadın ifadeleri/zamirleri kullanılır.",
         "aliases": ["sez", "sezin", "sezin boyraz", "sezrage", "kürtçük"],
     },
     "yakup": {
@@ -105,8 +106,14 @@ USER_METADATA = {
     "lydiaq": {
         "title": "LYDIAQ (EBRAR AVŞAR)",
         "real_name": "Ebrar Avşar",
-        "notes": "Kızdır. Yakup Avşar'ın kız kardeşidir.",
+        "notes": "Kızdır (kadındır). Ona hitap ederken ve bahsederken kadın ifadeleri/zamirleri kullanılır. Yakup Avşar'ın kız kardeşidir.",
         "aliases": ["lydiaq", "ebrar", "ebrar avşar", "lydia"],
+    },
+    "nil": {
+        "title": "CRIMSON MOON (NİL)",
+        "real_name": "Nil",
+        "notes": "Kızdır (kadındır). Ona hitap ederken ve bahsederken kadın ifadeleri/zamirleri kullanılır. Discord kullanıcı adı 'Crimson Moon'.",
+        "aliases": ["nil", "crimson moon", "crimson", "crimsonmoon"],
     },
 }
 
