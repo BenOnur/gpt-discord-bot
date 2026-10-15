@@ -94,6 +94,36 @@ def get_service_status() -> str:
     )
 
 
+BOT_COMMANDS = [
+    {"command": "say", "description": "Discord kanala bot olarak mesaj at"},
+    {"command": "tts", "description": "Ses kanalina gir, erkek sesiyle soyle"},
+    {"command": "channels", "description": "Discord kanallari ve sestekileri goster"},
+    {"command": "backup", "description": "Canli Discord hafiza yedegi al ve gonder"},
+    {"command": "status", "description": "Bot ve yedekleme durumu"},
+    {"command": "restart", "description": "Discord botunu yeniden baslat"},
+    {"command": "ping", "description": "Bot baglanti testi"},
+    {"command": "help", "description": "Komut yardimi ve aciklamalar"},
+]
+
+
+async def register_bot_commands(client: httpx.AsyncClient, token: str) -> None:
+    """Register command autocompletion menu with Telegram Bot API."""
+    try:
+        await client.post(
+            f"https://api.telegram.org/bot{token}/setMyCommands",
+            json={"commands": BOT_COMMANDS},
+            timeout=10.0,
+        )
+        await client.post(
+            f"https://api.telegram.org/bot{token}/setChatMenuButton",
+            json={"menu_button": {"type": "commands"}},
+            timeout=10.0,
+        )
+        logger.info("Telegram bot commands & menu button registered successfully.")
+    except Exception as e:
+        logger.warning("Failed to register Telegram bot commands: %s", e)
+
+
 async def handle_update(client: httpx.AsyncClient, token: str, authorized_chat_id: str, update: dict) -> None:
     message = update.get("message")
     if not message:
@@ -109,9 +139,11 @@ async def handle_update(client: httpx.AsyncClient, token: str, authorized_chat_i
         await send_message(client, token, user_id, "⛔ Yetkisiz erişim. Bu bot yalnızca sunucu yöneticisine tahsis edilmiştir.")
         return
 
-    text_lower = raw_text.lower()
+    raw_parts = raw_text.split(None, 1)
+    cmd = raw_parts[0].lower().split("@")[0] if raw_parts else ""
+    rest = raw_parts[1].strip() if len(raw_parts) > 1 else ""
 
-    if text_lower in ("/start", "/help"):
+    if cmd in ("/start", "/help"):
         help_msg = (
             f"👋 Selam Onur! <b>Backup & Puppet Botu</b> devrede.\n\n"
             f"<b>🎭 Discord Kukla Komutları (Gizli Trollük):</b>\n"
@@ -120,21 +152,21 @@ async def handle_update(client: httpx.AsyncClient, token: str, authorized_chat_i
             f"• <code>/tts söylenecek laf</code> - Bot ses kanalına girer, tok erkek sesiyle söyler ve çıkar.\n"
             f"• <code>/channels</code> - Sunucudaki kanalları ve seste kimlerin olduğunu gösterir.\n\n"
             f"<b>💾 Yedekleme & Sistem:</b>\n"
-            f"• <code>/backup discord</code> - Anlık canlı hafıza snapshot'ı alıp buraya atar.\n"
-            f"• <code>/restart discord</code> - Discord botunu yeniden başlatır.\n"
+            f"• <code>/backup</code> - Anlık canlı hafıza snapshot'ı alıp buraya atar.\n"
+            f"• <code>/restart</code> - Discord botunu yeniden başlatır.\n"
             f"• <code>/status</code> - Servislerin ve son yedeğin durumunu gösterir.\n"
             f"• <code>/ping</code> - Botun aktifliğini test eder."
         )
         await send_message(client, token, authorized_chat_id, help_msg)
 
-    elif text_lower == "/ping":
+    elif cmd == "/ping":
         await send_message(client, token, authorized_chat_id, "🏓 Pong! Backup & Kukla botu VDS'te çalışıyor.")
 
-    elif text_lower == "/status":
+    elif cmd == "/status":
         status_msg = get_service_status()
         await send_message(client, token, authorized_chat_id, status_msg)
 
-    elif text_lower.startswith("/channels") or text_lower.startswith("/kanallar"):
+    elif cmd in ("/channels", "/kanallar"):
         res = await call_ipc({"action": "channels"})
         if res.get("ok"):
             text_lines = [f"• #{c['name']}" for c in res.get("text_channels", [])]
@@ -152,8 +184,8 @@ async def handle_update(client: httpx.AsyncClient, token: str, authorized_chat_i
         else:
             await send_message(client, token, authorized_chat_id, f"❌ Kanal listesi alınamadı:\n<code>{res.get('error')}</code>")
 
-    elif text_lower.startswith("/say"):
-        payload_str = raw_text[len("/say"):].strip()
+    elif cmd == "/say":
+        payload_str = rest
         if not payload_str:
             await send_message(client, token, authorized_chat_id, "Kullanım: <code>/say mesajınız</code> veya <code>/say #kanal mesajınız</code>")
             return
@@ -171,8 +203,8 @@ async def handle_update(client: httpx.AsyncClient, token: str, authorized_chat_i
         else:
             await send_message(client, token, authorized_chat_id, f"❌ İletilemedi:\n<code>{res.get('error')}</code>")
 
-    elif text_lower.startswith("/tts"):
-        payload_str = raw_text[len("/tts"):].strip()
+    elif cmd == "/tts":
+        payload_str = rest
         if not payload_str:
             await send_message(client, token, authorized_chat_id, "Kullanım: <code>/tts söylenecek metin</code> veya <code>/tts #ses-kanalı söylenecek metin</code>")
             return
@@ -191,8 +223,8 @@ async def handle_update(client: httpx.AsyncClient, token: str, authorized_chat_i
         else:
             await send_message(client, token, authorized_chat_id, f"❌ Sesli konuşma başarısız:\n<code>{res.get('error')}</code>")
 
-    elif text_lower.startswith("/restart"):
-        target = raw_text[len("/restart"):].strip().lower()
+    elif cmd == "/restart":
+        target = rest.lower()
         if not target or "discord" in target:
             await send_message(client, token, authorized_chat_id, "🔄 <b>Discord AI Bot servisi yeniden başlatılıyor...</b>")
             try:
@@ -206,8 +238,8 @@ async def handle_update(client: httpx.AsyncClient, token: str, authorized_chat_i
         else:
             await send_message(client, token, authorized_chat_id, f"Bilinmeyen servis: <code>{target}</code>. Kullanım: <code>/restart discord</code>")
 
-    elif text_lower.startswith("/backup"):
-        target = raw_text[len("/backup"):].strip().lower()
+    elif cmd == "/backup":
+        target = rest.lower()
         if not target or "discord" in target:
             await send_message(
                 client,
@@ -236,6 +268,7 @@ async def run_bot() -> None:
     poll_url = f"https://api.telegram.org/bot{token}/getUpdates"
 
     async with httpx.AsyncClient(timeout=45.0) as client:
+        await register_bot_commands(client, token)
         while True:
             try:
                 params = {"timeout": 30}
