@@ -137,6 +137,20 @@ class ToolsTest(unittest.TestCase):
         res = voice_speak("Ahmet ayağını denk al")
         self.assertIn("Ses kanalına bağlanılamadı", res)
 
+    def test_generate_quote_basic(self):
+        from bot.llm.tools.generate_quote import generate_quote
+        # Without Discord loop
+        res = generate_quote("Örnek racon sözü", "Sezin")
+        self.assertIn("Quote kartı üretildi", res)
+
+    def test_quote_card_renderer(self):
+        from bot.quote.renderer import render_quote_card
+        png_bytes = render_quote_card("Hayat kısa kuşlar uçuyor", "Cemal Süreya")
+        self.assertTrue(isinstance(png_bytes, bytes))
+        self.assertTrue(len(png_bytes) > 1000)
+        # Check PNG header
+        self.assertTrue(png_bytes.startswith(b"\x89PNG\r\n\x1a\n"))
+
     def test_tool_registry_discovery(self):
         registry = build_tool_registry()
         expected = [
@@ -155,6 +169,7 @@ class ToolsTest(unittest.TestCase):
             "daily_recap",
             "drama_judge",
             "voice_speak",
+            "generate_quote",
         ]
         for tool_name in expected:
             self.assertIn(tool_name, registry, f"Tool '{tool_name}' should be in registry")

@@ -490,6 +490,60 @@ async def persona_autocomplete(interaction: discord.Interaction, curr_str: str) 
     return choices[:25]
 
 
+@discord_bot.tree.command(name="quote", description="Generate an Equicord-style quote card for a message or text")
+@app_commands.describe(
+    message_id="ID or link of the message to quote (optional)",
+    text="Custom text to quote (optional)",
+    author="Author name (optional)",
+)
+async def quote_command(
+    interaction: discord.Interaction,
+    message_id: str = None,
+    text: str = None,
+    author: str = None,
+) -> None:
+    await interaction.response.defer()
+    target_msg = None
+    target_text = text
+    target_author = author
+    avatar_bytes = None
+
+    if message_id:
+        clean_id = message_id.strip().split("/")[-1]
+        try:
+            mid = int(clean_id)
+            target_msg = await interaction.channel.fetch_message(mid)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Mesaj bulunamadı: {e}", ephemeral=True)
+            return
+
+    if target_msg:
+        if not target_text:
+            target_text = target_msg.clean_content or target_msg.content
+        if not target_author:
+            target_author = target_msg.author.display_name or target_msg.author.name
+        try:
+            avatar_bytes = await target_msg.author.display_avatar.with_format("png").with_size(512).read()
+        except Exception:
+            pass
+    elif not target_text:
+        await interaction.followup.send("❌ Alıntı yapılacak bir mesaj ID'si veya metin belirtmelisin.", ephemeral=True)
+        return
+
+    from bot.quote.renderer import render_quote_card
+    try:
+        png_bytes = await asyncio.to_thread(
+            render_quote_card,
+            target_text,
+            target_author or interaction.user.display_name,
+            avatar_bytes,
+        )
+        file = discord.File(io.BytesIO(png_bytes), filename="quote.png")
+        await interaction.followup.send(file=file)
+    except Exception as err:
+        await interaction.followup.send(f"❌ Quote oluşturulamadı: {err}", ephemeral=True)
+
+
 # ── Events ───────────────────────────────────────────────────────────────────
 
 @discord_bot.event
@@ -618,6 +672,32 @@ async def on_message(new_msg: discord.Message) -> None:
         "scheduler": scheduler,
         "config": config,
     })
+
+    # Fast-path for quote request on replies: e.g. "@bot quote yap", "bunu quote yap", "quote"
+    if new_msg.reference and new_msg.reference.message_id:
+        clean_prompt = re.sub(r"<@!?[0-9]+>", "", new_msg.content).strip().lower()
+        is_quote_req = (
+            clean_prompt in {"quote", "quote yap", "bunu quote yap", "alıntı yap", "alıntıla", "quote kartı", "söz kartı", "racon kartı"}
+            or any(clean_prompt.startswith(prefix) for prefix in ("quote yap", "bunu quote yap", "alıntı yap", "quote et", "bunu alıntıla"))
+        )
+        if is_quote_req:
+            from bot.llm.tools.generate_quote import _async_generate_quote
+            try:
+                await _async_generate_quote(None, None, {
+                    "bot": discord_bot,
+                    "message": new_msg,
+                    "channel": new_msg.channel,
+                    "guild": new_msg.guild,
+                    "author": new_msg.author,
+                })
+                try:
+                    await new_msg.add_reaction("🖼️")
+                except Exception:
+                    pass
+                return
+            except Exception as e:
+                logging.error(f"Fast path quote failed: {e}", exc_info=True)
+
 
     provider_slash_model = curr_model
     provider, model = provider_slash_model.removesuffix(":vision").split("/", 1)
@@ -934,7 +1014,8 @@ async def on_message(new_msg: discord.Message) -> None:
                     ctx = get_current_discord_context()
                     if ctx.get("suppress_chat_reply"):
                         try:
-                            await new_msg.add_reaction("🔊")
+                            rx = ctx.get("suppress_reaction", "🔊")
+                            await new_msg.add_reaction(rx)
                         except Exception:
                             pass
                         try:
