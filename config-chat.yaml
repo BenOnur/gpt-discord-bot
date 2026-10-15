@@ -35,9 +35,10 @@ models:
     tools: []
     supports_tools: false
     max_tokens: 1024
-  groq/llama-3.3-70b-versatile:
+  groq/openai/gpt-oss-120b:
     tools: []
     supports_tools: false
     max_tokens: 1024
-# Enable fallback only after both accounts/models pass the live probe.
-fallback_models: []
+# Both models passed a live completion probe on the deployment account.
+fallback_models:
+  - groq/openai/gpt-oss-120b
