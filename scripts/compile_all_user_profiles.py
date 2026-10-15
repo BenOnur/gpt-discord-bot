@@ -49,15 +49,69 @@ KNOWN_CHANNELS = {
 
 # Known multi-account clusters
 KNOWN_CLUSTERS = {
-    "onur": [630153541465538561, 1498684197370597438, 1475228353211666595],
+    "Apro": [405703268753211393],
     "sez": [962397030544707695, 809050354133237760],
     "yakup": [1403857873292759161, 456226577798135808],
+    "19": [455020808939765770],
+    "onur": [630153541465538561, 1498684197370597438, 1475228353211666595, 301044320251805697, 963848559176847370],
+    "yiğit": [697793272873222295],
+    "mworty": [556461336062590987],
+    "Lydiaq": [594192960380469252],
+}
+
+USER_METADATA = {
+    "apro": {
+        "title": "APRO (TALHA SEMİH GÜNDÜZ)",
+        "real_name": "Talha Semih Gündüz",
+        "notes": "Sunucuda herkes ona Apro veya Talha der.",
+        "aliases": ["apro", "talha", "semih", "talha semih", "talha semih gündüz", "talha gündüz"],
+    },
+    "sez": {
+        "title": "SEZ (SEZİN BOYRAZ)",
+        "real_name": "Sezin Boyraz",
+        "notes": "Kızdır (kadındır). Ona hitap ederken ve bahsederken kadın ifadeleri kullanılır.",
+        "aliases": ["sez", "sezin", "sezin boyraz", "sezrage", "kürtçük"],
+    },
+    "yakup": {
+        "title": "YAKUP (YAKUP AVŞAR)",
+        "real_name": "Yakup Avşar",
+        "notes": "Ebrar Avşar (Lydiaq) ile kardeştirler. Eski hesabı 'Deleted User', yeni hesabı 'jambenoire'dir.",
+        "aliases": ["yakup", "yakup avşar", "jambenoire", "deleted user", "yakub", "salgamli meni"],
+    },
+    "19": {
+        "title": "19 (ALİ ARDA BAKKAL)",
+        "real_name": "Ali Arda Bakkal",
+        "notes": "Discord kullanıcı adı '19', sunucuda herkes ona 'Arda' der.",
+        "aliases": ["19", "arda", "ali arda", "ali arda bakkal", "arda bakkal"],
+    },
+    "onur": {
+        "title": "ONUR",
+        "real_name": "Onur",
+        "notes": "Sunucu Yöneticisi. 'onur', 'inactive' ve 'amyalamak' hesaplarının tamamı Onur'a aittir.",
+        "aliases": ["onur", "benonur", "witch", "amyalamak", "inactive"],
+    },
+    "yiğit": {
+        "title": "YİĞİT (YİĞİT YİRMİBEŞ)",
+        "real_name": "Yiğit Yirmibeş",
+        "notes": "Gerçek adı Yiğit Yirmibeş.",
+        "aliases": ["yiğit", "yigit", "yiğit yirmibeş", "yigit yirmibes"],
+    },
+    "mworty": {
+        "title": "MWORTY (MUHAMMET UMUTLU)",
+        "real_name": "Muhammet Umutlu",
+        "notes": "Discord kullanıcı adı 'mworty', gerçek adı Muhammet Umutlu.",
+        "aliases": ["mworty", "muhammet", "muhammed", "muhammet umutlu"],
+    },
+    "lydiaq": {
+        "title": "LYDIAQ (EBRAR AVŞAR)",
+        "real_name": "Ebrar Avşar",
+        "notes": "Kızdır. Yakup Avşar'ın kız kardeşidir.",
+        "aliases": ["lydiaq", "ebrar", "ebrar avşar", "lydia"],
+    },
 }
 
 CLUSTER_EXTRA_ALIASES = {
-    "yakup": ["jambenoire", "yakup", "yakub", "deleted user"],
-    "onur": ["onur", "benonur", "witch"],
-    "sez": ["sez", "sezrage", "kürtçük"],
+    cname: meta["aliases"] for cname, meta in USER_METADATA.items()
 }
 
 
@@ -235,10 +289,18 @@ def build_user_dossier(db: sqlite3.Connection, canonical_name: str, author_ids: 
     ).fetchall()
 
     # Build dossier
+    meta_info = USER_METADATA.get(canonical_name.lower())
+    title = meta_info["title"] if meta_info else canonical_name.upper()
+
     lines = [
         f"╔═══════════════════════════════════════════════════════════════════════╗",
-        f"║ DERİN KİŞİLİK VE DAVRANIŞ ARŞİV DOSYASI: {canonical_name.upper()}",
+        f"║ DERİN KİŞİLİK VE DAVRANIŞ ARŞİV DOSYASI: {title}",
         f"╚═══════════════════════════════════════════════════════════════════════╝",
+    ]
+    if meta_info:
+        lines.append(f"• Gerçek Adı: {meta_info['real_name']}")
+        lines.append(f"• Kimlik / Kişi Notu: {meta_info['notes']}")
+    lines.extend([
         f"• Toplam Arşivlenen Mesaj: {total_msgs:,} adet ({first_date} — {last_date} arası)",
         f"• Bağlı Hesaplar: {acc_summary}",
         f"• Zaman Dağılımı: Gece Kuşu: %{night_pct} | Akşam: %{evening_pct} | Gündüz: %{day_pct}",
@@ -247,7 +309,7 @@ def build_user_dossier(db: sqlite3.Connection, canonical_name: str, author_ids: 
         "",
         "════════════════════ GERÇEK MESAJ KANITLARI & ALINTILAR ════════════════════",
         "【1. Düşünceler, Hayat, İçsel Paylaşımlar & Anlatımlar】",
-    ]
+    ])
     for r in deep_rows:
         lines.append(f'• [{str(r[0])[:10]}] "{r[1]}"')
 
@@ -392,7 +454,8 @@ def compile_all() -> None:
                         VALUES (?, ?, ?)
                     """, (aid, canon_id, un))
         # Also register extra aliases
-        for alias in CLUSTER_EXTRA_ALIASES.get(canon_name, []):
+        extra_aliases = CLUSTER_EXTRA_ALIASES.get(canon_name.lower(), [])
+        for alias in extra_aliases:
             for aid in aids:
                 db.execute("""
                     INSERT OR REPLACE INTO user_profile_links (author_id, canonical_author_id, name)
@@ -402,8 +465,8 @@ def compile_all() -> None:
         # Write to Vault
         try:
             write_vault_profile(canon_name, dossier)
-            for alias in CLUSTER_EXTRA_ALIASES.get(canon_name, []):
-                if alias.lower() not in ("deleted user", canon_name.lower()):
+            for alias in extra_aliases:
+                if alias.lower() not in ("deleted user", "inactive", "amyalamak", canon_name.lower()):
                     write_vault_profile(alias, dossier)
         except Exception as e:
             logger.warning("Failed to write vault markdown for %s: %s", canon_name, e)
