@@ -10,6 +10,7 @@ use_plain_responses: true
 show_embed_color: false
 allow_dms: false
 enable_voice: false
+enable_message_content: false # Mention/reply chat works without privileged content access.
 enable_scheduled_tasks: false
 system_prompt: "Kullanıcıyla Türkçe konuş. Kısa ve anlaşılır yanıt ver."
 permissions:

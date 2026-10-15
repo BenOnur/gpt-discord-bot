@@ -3,7 +3,8 @@
 Bu fork ilk aşamada yalnız metin sohbeti için ayarlanır. Kişilik, araçlar,
 ses ve hatırlatmalar daha sonra ele alınır. Upstream: ckw1206/gpt-discord-bot.
 
-1. Discord Developer Portal'da uygulama oluştur; Message Content Intent'i aç.
+1. Discord Developer Portal'da uygulama oluştur. İlk aşamada bot mention ve
+   kendisine verilen yanıtlarla konuşur; Message Content Intent gerekmez.
 2. Yalnız hedef test kanalında View Channel, Send Messages ve Read Message
    History izinleri ver. Administrator gerekmez. Botu sunucuya davet et.
 3. VDS'te `/etc/discord-ai-bot/env` dosyasını root sahibi ve 600 izinle oluştur:

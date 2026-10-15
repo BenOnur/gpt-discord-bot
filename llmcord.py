@@ -88,7 +88,7 @@ last_task_time = 0
 scheduler = AsyncIOScheduler()
 
 intents = discord.Intents.default()
-intents.message_content = True
+intents.message_content = config.get("enable_message_content", True)
 intents.dm_messages = True
 intents.voice_states = config.get("enable_voice", True)
 activity = discord.CustomActivity(name=(config.get("status_message") or "github.com/jakobdylanc/llmcord")[:128])
