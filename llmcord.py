@@ -608,11 +608,19 @@ async def on_ready() -> None:
     if config.get("enable_voice", True):
         from bot.voice import setup_voice_cog
         await setup_voice_cog(discord_bot, config)
-    # Sync to all guilds
+    # Sync global command tree
     await discord_bot.tree.sync()
-    # Log all registered commands
     commands = discord_bot.tree._get_all_commands()
-    logging.info(f"Synced {len(commands)} slash commands: {[c.name for c in commands]}")
+    logging.info(f"Synced {len(commands)} global slash commands: {[c.name for c in commands]}")
+
+    # Instant sync to each guild so slash commands appear immediately in Discord UI (bypasses 1-hour CDN delay)
+    for guild in discord_bot.guilds:
+        try:
+            discord_bot.tree.copy_global_to(guild=guild)
+            await discord_bot.tree.sync(guild=guild)
+            logging.info(f"⚡ Instant guild-synced {len(commands)} slash commands to: {guild.name} ({guild.id})")
+        except Exception as e:
+            logging.warning(f"Failed to guild-sync slash commands to {guild.name} ({guild.id}): {e}")
     if not scheduler.running:
         scheduler.start()
         setup_scheduled_tasks()
@@ -628,6 +636,16 @@ async def on_ready() -> None:
         await start_ipc_server(discord_bot)
     except Exception as e:
         logging.warning("Failed to start IPC server: %s", e)
+
+
+@discord_bot.event
+async def on_guild_join(guild: discord.Guild) -> None:
+    try:
+        discord_bot.tree.copy_global_to(guild=guild)
+        await discord_bot.tree.sync(guild=guild)
+        logging.info(f"⚡ Instant guild-synced slash commands to newly joined guild: {guild.name} ({guild.id})")
+    except Exception as e:
+        logging.warning(f"Failed to sync commands to joined guild {guild.id}: {e}")
 
 
 @discord_bot.event
@@ -676,7 +694,15 @@ async def on_message(new_msg: discord.Message) -> None:
     )
     is_mentioned = discord_bot.user in new_msg.mentions or is_reply_to_bot
 
-    if not is_dm and not is_mentioned:
+    raw_lower = new_msg.content.strip().lower()
+    is_text_cmd = raw_lower.startswith((
+        "/kimdedi", "!kimdedi",
+        "/kimdedi_skor", "!kimdedi_skor",
+        "/quote", "!quote",
+        "/skor", "!skor",
+    ))
+
+    if not is_dm and not is_mentioned and not is_text_cmd:
         # Untagged message in server: check zero-token spontaneous banter
         try:
             from bot.chat.spontaneous import maybe_handle_spontaneous
@@ -726,41 +752,80 @@ async def on_message(new_msg: discord.Message) -> None:
         "config": config,
     })
 
-    # Fast-path for quote request on replies: e.g. "@bot quote yap", "bunu quote yap", "quote"
-    if new_msg.reference and new_msg.reference.message_id:
-        clean_prompt = re.sub(r"<@!?[0-9]+>", "", new_msg.content).strip().lower()
-        is_quote_req = (
-            clean_prompt in {"quote", "quote yap", "bunu quote yap", "alıntı yap", "alıntıla", "quote kartı", "söz kartı", "racon kartı"}
-            or any(clean_prompt.startswith(prefix) for prefix in ("quote yap", "bunu quote yap", "alıntı yap", "quote et", "bunu alıntıla"))
-        )
-        if is_quote_req:
-            from bot.llm.tools.generate_quote import _async_generate_quote
-            try:
-                await _async_generate_quote(None, None, {
-                    "bot": discord_bot,
-                    "message": new_msg,
-                    "channel": new_msg.channel,
-                    "guild": new_msg.guild,
-                    "author": new_msg.author,
-                })
-                try:
-                    await new_msg.add_reaction("🖼️")
-                except Exception:
-                    pass
-                return
-            except Exception as e:
-                logging.error(f"Fast path quote failed: {e}", exc_info=True)
-
-    # Fast-path for trivia game: e.g. "@bot kim dedi", "bunu kim dedi", "trivia başlat"
     clean_prompt = re.sub(r"<@!?[0-9]+>", "", new_msg.content).strip().lower()
-    is_trivia_req = (
-        clean_prompt in {"kim dedi", "bunu kim dedi", "kim söyledi", "trivia", "trivia başlat", "kim dedi oyunu", "oyun başlat"}
-        or any(clean_prompt.startswith(p) for p in ("kim dedi", "bunu kim dedi", "kim söyledi", "trivia başlat"))
+
+    # Fast-path for quote request:
+    # 1) When replying to another message with "@bot quote yap", "alıntıla", "/quote", "!quote"
+    # 2) Or typed directly as "/quote <custom text>" / "!quote <custom text>"
+    is_quote_on_reply = bool(new_msg.reference and new_msg.reference.message_id) and (
+        clean_prompt in {"quote", "quote yap", "bunu quote yap", "alıntı yap", "alıntıla", "quote kartı", "söz kartı", "racon kartı", "/quote", "!quote"}
+        or any(clean_prompt.startswith(prefix) for prefix in ("quote yap", "bunu quote yap", "alıntı yap", "quote et", "bunu alıntıla", "/quote", "!quote"))
     )
-    if is_trivia_req:
+    is_direct_quote = clean_prompt.startswith(("/quote ", "!quote "))
+
+    if is_quote_on_reply or is_direct_quote:
+        from bot.llm.tools.generate_quote import _async_generate_quote
+        try:
+            custom_text = None
+            if is_direct_quote:
+                for pfx in ("/quote ", "!quote "):
+                    if clean_prompt.startswith(pfx):
+                        custom_text = new_msg.content.strip()[len(pfx):].strip()
+                        break
+            await _async_generate_quote(None, custom_text, {
+                "bot": discord_bot,
+                "message": new_msg,
+                "channel": new_msg.channel,
+                "guild": new_msg.guild,
+                "author": new_msg.author,
+            })
+            try:
+                await new_msg.add_reaction("🖼️")
+            except Exception:
+                pass
+            return
+        except Exception as e:
+            logging.error(f"Fast path quote failed: {e}", exc_info=True)
+
+    # Fast-path for trivia leaderboard:
+    # "/kimdedi_skor", "!kimdedi_skor", "/skor", "!skor", "@bot trivia skor"
+    is_trivia_score_req = (
+        clean_prompt in {"kimdedi_skor", "/kimdedi_skor", "!kimdedi_skor", "skor", "/skor", "!skor", "trivia skor", "trivia skorları", "trivia liderlik"}
+        or any(clean_prompt.startswith(p) for p in ("/kimdedi_skor", "!kimdedi_skor", "/skor", "!skor"))
+    )
+    if is_trivia_score_req:
         from bot.llm.tools.trivia import _async_start_trivia
         try:
-            await _async_start_trivia(None, False, {
+            await _async_start_trivia(None, True, {
+                "bot": discord_bot,
+                "message": new_msg,
+                "channel": new_msg.channel,
+                "guild": new_msg.guild,
+                "author": new_msg.author,
+                "config": config,
+            })
+            return
+        except Exception as e:
+            logging.error(f"Fast path trivia score failed: {e}", exc_info=True)
+
+    # Fast-path for trivia game:
+    # e.g. "/kimdedi", "!kimdedi", "@bot kim dedi", "bunu kim dedi", "trivia başlat"
+    is_trivia_req = (
+        clean_prompt in {"kim dedi", "bunu kim dedi", "kim söyledi", "trivia", "trivia başlat", "kim dedi oyunu", "oyun başlat", "/kimdedi", "!kimdedi"}
+        or any(clean_prompt.startswith(p) for p in ("kim dedi", "bunu kim dedi", "kim söyledi", "trivia başlat", "/kimdedi", "!kimdedi"))
+    )
+    if is_trivia_req:
+        search_query = None
+        for prefix in ("/kimdedi", "!kimdedi", "kim dedi", "bunu kim dedi", "kim söyledi", "trivia başlat"):
+            if clean_prompt.startswith(prefix):
+                remainder = clean_prompt[len(prefix):].strip()
+                if remainder:
+                    search_query = remainder
+                break
+
+        from bot.llm.tools.trivia import _async_start_trivia
+        try:
+            await _async_start_trivia(search_query, False, {
                 "bot": discord_bot,
                 "message": new_msg,
                 "channel": new_msg.channel,
