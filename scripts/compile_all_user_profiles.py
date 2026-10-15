@@ -132,14 +132,18 @@ def init_db(db: sqlite3.Connection) -> None:
         )
     """)
     db.execute("CREATE INDEX IF NOT EXISTS idx_user_profiles_name ON user_profiles(canonical_name)")
+    db.execute("DROP TABLE IF EXISTS user_profile_links")
     db.execute("""
-        CREATE TABLE IF NOT EXISTS user_profile_links (
-            author_id INTEGER PRIMARY KEY,
+        CREATE TABLE user_profile_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            author_id INTEGER,
             canonical_author_id INTEGER,
-            name TEXT
+            name TEXT,
+            UNIQUE(author_id, name)
         )
     """)
     db.execute("CREATE INDEX IF NOT EXISTS idx_profile_links_canon ON user_profile_links(canonical_author_id)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_profile_links_author ON user_profile_links(author_id)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_profile_links_name ON user_profile_links(name)")
     db.commit()
 
@@ -450,17 +454,22 @@ def compile_all() -> None:
             for (un,) in names:
                 if un:
                     db.execute("""
-                        INSERT OR REPLACE INTO user_profile_links (author_id, canonical_author_id, name)
+                        INSERT OR IGNORE INTO user_profile_links (author_id, canonical_author_id, name)
                         VALUES (?, ?, ?)
-                    """, (aid, canon_id, un))
-        # Also register extra aliases
+                    """, (aid, canon_id, un.strip().lower()))
+            db.execute("""
+                INSERT OR IGNORE INTO user_profile_links (author_id, canonical_author_id, name)
+                VALUES (?, ?, ?)
+            """, (aid, canon_id, canon_name.strip().lower()))
+
+        # Also register extra aliases and real names
         extra_aliases = CLUSTER_EXTRA_ALIASES.get(canon_name.lower(), [])
         for alias in extra_aliases:
             for aid in aids:
                 db.execute("""
-                    INSERT OR REPLACE INTO user_profile_links (author_id, canonical_author_id, name)
+                    INSERT OR IGNORE INTO user_profile_links (author_id, canonical_author_id, name)
                     VALUES (?, ?, ?)
-                """, (aid, canon_id, alias))
+                """, (aid, canon_id, alias.strip().lower()))
 
         # Write to Vault
         try:
