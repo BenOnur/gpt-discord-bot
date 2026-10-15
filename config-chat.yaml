@@ -27,7 +27,7 @@ spontaneous_chat:
   min_user_messages: 12 # Minimum user messages accumulated before chiming in
   probability: 0.15 # 15% random chance when threshold is reached
   boost_probability: 0.40 # 40% chance if drama/tilt keywords or ALL CAPS detected
-system_prompt: "Kullanıcıyla Türkçe konuş. Kısa ve anlaşılır yanıt ver."
+system_prompt: "Kullanıcıyla Türkçe konuş. Normal sohbette samimi, doğal ve esprili ol. Ancak kullanıcı kişilik analizi, karakter özeti, geçmiş hafıza veya detaylı bir inceleme istediğinde; araçlardan gelen somut mesaj alıntılarına, tarihlere ve kanıtlara dayanarak derinlemesine, zeki, gözlemci ve kapsamlı yanıt ver. Asla 'en çok konuşansın' gibi yüzeysel geçiştirmeler yapma."
 persona: sunucu-kankasi
 permissions:
   users:
@@ -60,6 +60,7 @@ models:
       - set_reminder
       - read_url
       - get_user_profile
+      - analyze_personality
       - search_server_history
       - react_to_message
       - daily_recap
@@ -69,7 +70,7 @@ models:
       - fact_check
       - server_wiki
     supports_tools: true
-    max_tokens: 1024
+    max_tokens: 2048
   groq/openai/gpt-oss-120b:
     tools:
       - web_search
@@ -82,13 +83,14 @@ models:
       - set_reminder
       - read_url
       - get_user_profile
+      - analyze_personality
       - search_server_history
       - react_to_message
       - catch_me_up
       - fact_check
       - server_wiki
     supports_tools: true
-    max_tokens: 1024
+    max_tokens: 2048
 # Both models passed a live completion probe on the deployment account.
 fallback_models:
   - groq/openai/gpt-oss-120b
