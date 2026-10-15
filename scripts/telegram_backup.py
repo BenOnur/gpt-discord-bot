@@ -113,7 +113,7 @@ def rotate_local_backups(keep_count: int = 3) -> None:
             logger.warning("Failed to remove old backup %s: %s", oldest, e)
 
 
-def send_to_telegram(tar_path: Path, token: str, chat_id: str) -> None:
+def send_to_telegram(tar_path: Path, token: str, chat_id: str, trigger_name: str = "Otomatik Zamanlayıcı") -> None:
     """Send backup archive via Telegram Bot API sendDocument."""
     size_mb = tar_path.stat().st_size / (1024 * 1024)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -123,7 +123,8 @@ def send_to_telegram(tar_path: Path, token: str, chat_id: str) -> None:
         f"📅 Tarih: <code>{now_str}</code>\n"
         f"📦 Boyut: <b>{size_mb:.2f} MB</b>\n"
         f"💾 İçerik: <code>archive.sqlite3 + vault + memory.db</code>\n"
-        f"🔒 Durum: Atomik Canlı Snapshot Alındı"
+        f"⚡ <b>Tetikleme:</b> {trigger_name}\n"
+        f"🔒 <b>Durum:</b> Atomik Canlı Snapshot Alındı"
     )
 
     url = f"https://api.telegram.org/bot{token}/sendDocument"
@@ -147,7 +148,8 @@ def send_to_telegram(tar_path: Path, token: str, chat_id: str) -> None:
     logger.info("Backup successfully delivered to Telegram!")
 
 
-def main() -> int:
+def execute_backup(trigger_name: str = "Otomatik Zamanlayıcı") -> Path:
+    """Execute complete atomic backup workflow and return path to created archive."""
     token, chat_id = load_env()
     BACKUP_STORE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -172,11 +174,16 @@ def main() -> int:
     logger.info("Created compressed archive %s (%.2f MB)", tar_path.name, size_mb)
 
     # Send to Telegram DM
-    send_to_telegram(tar_path, token, chat_id)
+    send_to_telegram(tar_path, token, chat_id, trigger_name=trigger_name)
 
     # Rotate local backups
     rotate_local_backups(keep_count=3)
 
+    return tar_path
+
+
+def main() -> int:
+    execute_backup(trigger_name="Otomatik Zamanlayıcı (04:00)")
     return 0
 
 
