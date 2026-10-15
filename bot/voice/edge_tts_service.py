@@ -1,14 +1,13 @@
 """
 Robust Speech Synthesis Service for Turkish Voice Output.
-Primary: Microsoft Edge-TTS (tr-TR-AhmetNeural, high-quality neural voice).
-Fallback: Google Translate TTS (gTTS, zero-filter, speaks any Turkish slang/profanity without blocking).
+Uses Microsoft Edge-TTS (tr-TR-AhmetNeural, natural high-quality Turkish male neural voice).
+Includes multi-attempt cluster reconnects to handle Microsoft edge node flapping.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
-from pathlib import Path
 import tempfile
 
 logger = logging.getLogger(__name__)
@@ -20,20 +19,21 @@ FEMALE_VOICE = "tr-TR-EmelNeural"
 async def synthesize_speech(
     text: str,
     voice: str = DEFAULT_VOICE,
-    retries: int = 2,
+    retries: int = 6,
     output_path: str | None = None,
 ) -> str:
     """
-    Synthesize text to an MP3 file.
-    Tries Edge-TTS (AhmetNeural) first. If Microsoft blocks the text due to profanity
-    or safety filters (NoAudioReceived / 400), automatically falls back to gTTS (unfiltered Turkish).
-    
+    Synthesize text to an MP3 file using Microsoft Edge-TTS male neural voice (AhmetNeural).
+    Microsoft's Edge Read Aloud endpoint occasionally load-balances to nodes that return
+    empty audio streams (NoAudioReceived). This function retries across fresh websocket
+    connections to guarantee hitting an active synthesis cluster.
+
     Args:
         text: Text to speak
         voice: Turkish voice name (defaults to tr-TR-AhmetNeural)
-        retries: Number of connection retries for Edge-TTS
+        retries: Number of connection retries for Edge-TTS (default 6)
         output_path: Target MP3 path. If None, creates a named temp file.
-        
+
     Returns:
         Absolute path to the created audio file.
     """
@@ -45,11 +45,11 @@ async def synthesize_speech(
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
             output_path = tf.name
 
-    # 1. Try Edge-TTS first (natural neural voice)
-    edge_success = False
+    last_error = None
     for attempt in range(1, retries + 1):
         try:
             import edge_tts
+
             communicate = edge_tts.Communicate(clean_text, voice)
             audio_bytes = b""
             async for chunk in communicate.stream():
@@ -59,67 +59,36 @@ async def synthesize_speech(
             if audio_bytes and len(audio_bytes) > 500:
                 with open(output_path, "wb") as f:
                     f.write(audio_bytes)
-                logger.info("Edge-TTS (%s) synthesized %d bytes to %s", voice, len(audio_bytes), output_path)
-                edge_success = True
+                logger.info(
+                    "Edge-TTS (%s) synthesized %d bytes on attempt %d/%d to %s",
+                    voice,
+                    len(audio_bytes),
+                    attempt,
+                    retries,
+                    output_path,
+                )
                 return output_path
             else:
-                logger.warning("Edge-TTS returned no audio (likely profanity filter), falling back to gTTS")
-                break
-        except Exception as e:
-            logger.warning("Edge-TTS attempt %d/%d failed: %s", attempt, retries, e)
-            if attempt < retries:
-                await asyncio.sleep(0.8)
-
-    # 2. Fallback to gTTS with male pitch transform (unfiltered Turkish voice - handles swear words and raw slang)
-    logger.info("Attempting gTTS fallback for text: %s", clean_text[:60])
-    try:
-        from gtts import gTTS
-        import subprocess
-
-        def _generate_gtts():
-            raw_path = output_path + ".raw.mp3"
-            try:
-                tts = gTTS(text=clean_text, lang="tr")
-                tts.save(raw_path)
-
-                # Transform female gTTS audio into a natural adult male voice using FFmpeg
-                # asetrate=24000*0.80 lowers pitch and vocal tract formants by 20% to male vocal range,
-                # aresample=24000 restores standard 24kHz sample rate, atempo=1.25 restores normal speaking speed.
-                cmd = [
-                    "ffmpeg", "-y", "-i", raw_path,
-                    "-af", "asetrate=24000*0.80,aresample=24000,atempo=1.25",
-                    output_path,
-                ]
-                res = subprocess.run(
-                    cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=15,
+                logger.warning(
+                    "Edge-TTS attempt %d/%d returned empty audio for voice '%s', retrying...",
+                    attempt,
+                    retries,
+                    voice,
                 )
-                if res.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 100:
-                    return
-                # If ffmpeg returned error, fallback to raw audio
-                if os.path.exists(raw_path):
-                    os.replace(raw_path, output_path)
-            except Exception as fe:
-                logger.warning("Pitch shifting failed (%s), using raw audio", fe)
-                if os.path.exists(raw_path):
-                    os.replace(raw_path, output_path)
-            finally:
-                if os.path.exists(raw_path):
-                    try:
-                        os.remove(raw_path)
-                    except OSError:
-                        pass
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                "Edge-TTS attempt %d/%d failed with exception (%s), retrying...",
+                attempt,
+                retries,
+                e,
+            )
 
-        await asyncio.to_thread(_generate_gtts)
+        if attempt < retries:
+            await asyncio.sleep(0.25)
 
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 100:
-            logger.info("gTTS fallback (male pitch-shifted) succeeded, file size: %d bytes", os.path.getsize(output_path))
-            return output_path
-        else:
-            raise RuntimeError("gTTS output file is empty or missing")
-    except Exception as gtts_err:
-        logger.error("gTTS fallback failed: %s", gtts_err)
-        raise RuntimeError(f"All speech synthesis providers failed (Edge-TTS and gTTS): {gtts_err}")
+    raise RuntimeError(
+        f"Microsoft Edge-TTS ({voice}) {retries} denemenin ardından ses üretemedi: {last_error}"
+    )
+
 
