@@ -90,7 +90,7 @@ scheduler = AsyncIOScheduler()
 intents = discord.Intents.default()
 intents.message_content = True
 intents.dm_messages = True
-intents.voice_states = True  # Enable voice states for /join and /leave commands
+intents.voice_states = config.get("enable_voice", True)
 activity = discord.CustomActivity(name=(config.get("status_message") or "github.com/jakobdylanc/llmcord")[:128])
 discord_bot = commands.Bot(intents=intents, activity=activity, command_prefix=None)
 httpx_client = httpx.AsyncClient()
@@ -575,7 +575,7 @@ async def on_message(new_msg: discord.Message) -> None:
                 # Handle voice message attachments (audio/ogg)
                 voice_attachments = [a for a in curr_msg.attachments if a.content_type and a.content_type.startswith("audio")]
                 voice_transcriptions = []
-                if voice_attachments:
+                if voice_attachments and config.get("enable_voice", True):
                     # Try to get STT service
                     from bot.voice import create_stt, get_voice_config
                     voice_config = get_voice_config(config)
