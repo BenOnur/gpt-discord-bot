@@ -1,4 +1,4 @@
-# First-stage setup: chat only. No persona, tools, voice or scheduled tasks.
+# Chat with the server persona. No tools, voice or scheduled tasks.
 # Secrets are injected by /etc/discord-ai-bot/env on the VDS.
 bot_token: ${DISCORD_BOT_TOKEN}
 client_id: ${DISCORD_CLIENT_ID}
@@ -13,6 +13,7 @@ enable_voice: false
 enable_message_content: false # Mention/reply chat works without privileged content access.
 enable_scheduled_tasks: false
 system_prompt: "Kullanıcıyla Türkçe konuş. Kısa ve anlaşılır yanıt ver."
+persona: sunucu-kankasi
 permissions:
   users:
     admin_ids: []

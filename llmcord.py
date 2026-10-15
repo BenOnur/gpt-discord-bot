@@ -661,7 +661,7 @@ async def on_message(new_msg: discord.Message) -> None:
             
             curr_msg = curr_node.parent_msg
 
-    logging.info(f"Message (uid:{new_msg.author.id}, att:{len(new_msg.attachments)}, len:{len(messages)}): {new_msg.content}")
+    logging.info(f"Message (uid:{new_msg.author.id}, att:{len(new_msg.attachments)}, len:{len(messages)})")
 
     # System prompt: model-specific > current > global
     sys_prompt = ""
