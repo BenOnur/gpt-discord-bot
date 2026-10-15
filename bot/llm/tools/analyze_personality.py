@@ -84,6 +84,22 @@ def analyze_personality(user_query: str = "") -> str:
             if r:
                 target_name = r["name"]
 
+        # Fast path: Check pre-compiled user_profiles cache
+        try:
+            lookup_val = (target_name or clean_q or "").lower()
+            cached = db.execute("""
+                SELECT up.profile_dossier
+                FROM user_profiles up
+                JOIN user_profile_links upl ON up.author_id = upl.canonical_author_id
+                WHERE upl.author_id = ? OR lower(upl.name) = ? OR lower(up.canonical_name) = ?
+                LIMIT 1
+            """, (target_id, lookup_val, lookup_val)).fetchone()
+            if cached and cached[0]:
+                logging.info("analyze_personality: Returning pre-compiled brain dossier for %s (target_id=%s)", target_name, target_id)
+                return cached[0]
+        except sqlite3.OperationalError:
+            pass  # Table might not exist yet if compiler hasn't run
+
         # If we have target_name, find all matching author IDs
         author_ids: list[int] = []
         if target_name:

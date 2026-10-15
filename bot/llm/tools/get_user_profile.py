@@ -77,6 +77,21 @@ def get_user_profile(user_query: str) -> str:
             if r:
                 target_name = r["name"]
 
+        # Fast path: check pre-compiled cache
+        try:
+            lookup_val = (target_name or clean_query or "").lower()
+            cached = db.execute("""
+                SELECT up.profile_dossier
+                FROM user_profiles up
+                JOIN user_profile_links upl ON up.author_id = upl.canonical_author_id
+                WHERE upl.author_id = ? OR lower(upl.name) = ? OR lower(up.canonical_name) = ?
+                LIMIT 1
+            """, (target_id, lookup_val, lookup_val)).fetchone()
+            if cached and cached[0]:
+                return cached[0]
+        except sqlite3.OperationalError:
+            pass
+
         author_ids: list[int] = []
         if target_name:
             matches = db.execute(
