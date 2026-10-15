@@ -74,7 +74,7 @@ async def _async_voice_speak(text: str, target_user: str | None, ctx: dict[str, 
             if vc.channel != voice_channel:
                 await vc.move_to(voice_channel)
         else:
-            vc = await voice_channel.connect(timeout=10.0, reconnect=False)
+            vc = await voice_channel.connect(timeout=30.0, reconnect=True, self_deaf=True)
 
         # Play audio using FFmpeg
         audio_source = discord.FFmpegPCMAudio(temp_path)
