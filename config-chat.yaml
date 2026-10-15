@@ -65,6 +65,9 @@ models:
       - daily_recap
       - drama_judge
       - voice_speak
+      - catch_me_up
+      - fact_check
+      - server_wiki
     supports_tools: true
     max_tokens: 1024
   groq/openai/gpt-oss-120b:
@@ -81,6 +84,9 @@ models:
       - get_user_profile
       - search_server_history
       - react_to_message
+      - catch_me_up
+      - fact_check
+      - server_wiki
     supports_tools: true
     max_tokens: 1024
 # Both models passed a live completion probe on the deployment account.
