@@ -516,6 +516,12 @@ async def on_ready() -> None:
     except Exception as e:
         logging.warning("Failed to restore reminders: %s", e)
 
+    try:
+        from bot.chat.ipc_server import start_ipc_server
+        await start_ipc_server(discord_bot)
+    except Exception as e:
+        logging.warning("Failed to start IPC server: %s", e)
+
 
 @discord_bot.event
 async def on_message_edit(before: discord.Message, after: discord.Message) -> None:

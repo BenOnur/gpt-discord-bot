@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-Interactive Telegram Backup Bot Daemon.
+Interactive Telegram Backup Bot & Puppet Controller Daemon.
 Listens for commands from authorized Telegram user (Onur):
 - /backup discord (or /backup): takes an atomic snapshot of Discord bot memory and uploads it
-- /status: checks Discord bot service status, uptime and last backup info
+- /say [channel] <text>: sends message to Discord as the bot (Puppet Mode)
+- /tts [channel] <text>: joins voice channel, speaks aloud in male neural voice, and leaves
+- /channels: lists all text and voice channels with active members
+- /restart discord: restarts the Discord bot systemd service
+- /status: checks Discord bot service status and last backup info
 - /ping: responds with pong
 - /help: lists available commands
 """
@@ -11,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+import json
 import logging
 import os
 from pathlib import Path
@@ -27,6 +32,27 @@ from telegram_backup import load_env, execute_backup, BACKUP_STORE_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("backup_bot_daemon")
+
+IPC_HOST = "127.0.0.1"
+IPC_PORT = 8799
+
+
+async def call_ipc(req: dict) -> dict:
+    """Send JSON request to local Discord bot IPC server on port 8799."""
+    try:
+        reader, writer = await asyncio.open_connection(IPC_HOST, IPC_PORT)
+        writer.write(json.dumps(req).encode("utf-8") + b"\n")
+        await writer.drain()
+        line = await reader.readline()
+        writer.close()
+        await writer.wait_closed()
+        if not line:
+            return {"ok": False, "error": "IPC sunucusundan boş yanıt alındı"}
+        return json.loads(line.decode("utf-8").strip())
+    except ConnectionRefusedError:
+        return {"ok": False, "error": "Discord bot IPC servisi çevrimdışı (bot kapalı veya yeniden başlıyor olabilir)"}
+    except Exception as e:
+        return {"ok": False, "error": f"IPC bağlantı hatası: {e}"}
 
 
 async def send_message(client: httpx.AsyncClient, token: str, chat_id: str, text: str) -> None:
@@ -61,10 +87,10 @@ def get_service_status() -> str:
 
     return (
         f"📊 <b>VDS & Discord Bot Durumu</b>\n\n"
-        f"• Discord Bot Servisi: <b>{'🟢 Aktif (running)' if bot_status == 'active' else '🔴 ' + bot_status}</b>\n"
+        f"• Discord Bot: <b>{'🟢 Aktif (running)' if bot_status == 'active' else '🔴 ' + bot_status}</b>\n"
         f"• Son Yedek: {last_backup_info}\n"
-        f"• Otomatik Zamanlayıcı: <b>Her gece 04:00 TRT</b>\n"
-        f"• Anlık Manuel Yedek: <code>/backup discord</code>"
+        f"• Zamanlayıcı: <b>Her gece 04:00 TRT</b>\n"
+        f"• Kukla Modu (IPC): <b>127.0.0.1:8799</b>"
     )
 
 
@@ -87,21 +113,98 @@ async def handle_update(client: httpx.AsyncClient, token: str, authorized_chat_i
 
     if text_lower in ("/start", "/help"):
         help_msg = (
-            f"👋 Selam Onur! <b>Backup Botu</b> devrede.\n\n"
-            f"<b>Kullanabileceğin Komutlar:</b>\n"
-            f"• <code>/backup discord</code> (veya <code>/backup</code>) - Discord hafızasının canlı anlık yedeğini hemen alır ve buraya gönderir.\n"
-            f"• <code>/status</code> - Discord botunun ve son yedeğin durumunu kontrol eder.\n"
-            f"• <code>/ping</code> - Botun çalıştığını test eder.\n\n"
-            f"<i>Not: Ayrıca her gece 04:00'te otomatik günlük yedek de bu sohbete iletilir.</i>"
+            f"👋 Selam Onur! <b>Backup & Puppet Botu</b> devrede.\n\n"
+            f"<b>🎭 Discord Kukla Komutları (Gizli Trollük):</b>\n"
+            f"• <code>/say mesajınız</code> - Botun ağzından Discord #çet kanalına mesaj atar.\n"
+            f"• <code>/say #oyun mesajınız</code> - Belirttiğin kanala mesaj atar.\n"
+            f"• <code>/tts söylenecek laf</code> - Bot ses kanalına girer, tok erkek sesiyle söyler ve çıkar.\n"
+            f"• <code>/channels</code> - Sunucudaki kanalları ve seste kimlerin olduğunu gösterir.\n\n"
+            f"<b>💾 Yedekleme & Sistem:</b>\n"
+            f"• <code>/backup discord</code> - Anlık canlı hafıza snapshot'ı alıp buraya atar.\n"
+            f"• <code>/restart discord</code> - Discord botunu yeniden başlatır.\n"
+            f"• <code>/status</code> - Servislerin ve son yedeğin durumunu gösterir.\n"
+            f"• <code>/ping</code> - Botun aktifliğini test eder."
         )
         await send_message(client, token, authorized_chat_id, help_msg)
 
     elif text_lower == "/ping":
-        await send_message(client, token, authorized_chat_id, "🏓 Pong! Backup botu VDS'te tıkır tıkır çalışıyor.")
+        await send_message(client, token, authorized_chat_id, "🏓 Pong! Backup & Kukla botu VDS'te çalışıyor.")
 
     elif text_lower == "/status":
         status_msg = get_service_status()
         await send_message(client, token, authorized_chat_id, status_msg)
+
+    elif text_lower.startswith("/channels") or text_lower.startswith("/kanallar"):
+        res = await call_ipc({"action": "channels"})
+        if res.get("ok"):
+            text_lines = [f"• #{c['name']}" for c in res.get("text_channels", [])]
+            voice_lines = []
+            for vc in res.get("voice_channels", []):
+                members = ", ".join(vc.get("members", [])) or "Boş"
+                voice_lines.append(f"• 🔊 <b>#{vc['name']}</b> ({members})")
+
+            out = (
+                f"📋 <b>Discord Sunucu Kanalları ({res.get('guild')})</b>\n\n"
+                f"<b>Ses Kanalları (ve İçindekiler):</b>\n" + "\n".join(voice_lines) + "\n\n"
+                f"<b>Metin Kanalları:</b>\n" + "\n".join(text_lines[:15])
+            )
+            await send_message(client, token, authorized_chat_id, out)
+        else:
+            await send_message(client, token, authorized_chat_id, f"❌ Kanal listesi alınamadı:\n<code>{res.get('error')}</code>")
+
+    elif text_lower.startswith("/say"):
+        payload_str = raw_text[len("/say"):].strip()
+        if not payload_str:
+            await send_message(client, token, authorized_chat_id, "Kullanım: <code>/say mesajınız</code> veya <code>/say #kanal mesajınız</code>")
+            return
+
+        channel = "çet"
+        msg_text = payload_str
+        parts = payload_str.split(None, 1)
+        if len(parts) >= 2 and parts[0].startswith("#"):
+            channel = parts[0]
+            msg_text = parts[1]
+
+        res = await call_ipc({"action": "say", "channel": channel, "text": msg_text})
+        if res.get("ok"):
+            await send_message(client, token, authorized_chat_id, f"✅ <b>Mesaj Discord'a iletildi</b> (#{res.get('channel')}):\n<i>\"{msg_text}\"</i>")
+        else:
+            await send_message(client, token, authorized_chat_id, f"❌ İletilemedi:\n<code>{res.get('error')}</code>")
+
+    elif text_lower.startswith("/tts"):
+        payload_str = raw_text[len("/tts"):].strip()
+        if not payload_str:
+            await send_message(client, token, authorized_chat_id, "Kullanım: <code>/tts söylenecek metin</code> veya <code>/tts #ses-kanalı söylenecek metin</code>")
+            return
+
+        channel = ""
+        speech_text = payload_str
+        parts = payload_str.split(None, 1)
+        if len(parts) >= 2 and parts[0].startswith("#"):
+            channel = parts[0]
+            speech_text = parts[1]
+
+        await send_message(client, token, authorized_chat_id, f"🔊 <b>Sese giriliyor...</b>\n<i>\"{speech_text}\"</i>")
+        res = await call_ipc({"action": "tts", "channel": channel, "text": speech_text})
+        if res.get("ok"):
+            await send_message(client, token, authorized_chat_id, f"✅ <b>Sesli söylendi!</b> (#{res.get('channel')}):\n<i>\"{speech_text}\"</i>")
+        else:
+            await send_message(client, token, authorized_chat_id, f"❌ Sesli konuşma başarısız:\n<code>{res.get('error')}</code>")
+
+    elif text_lower.startswith("/restart"):
+        target = raw_text[len("/restart"):].strip().lower()
+        if not target or "discord" in target:
+            await send_message(client, token, authorized_chat_id, "🔄 <b>Discord AI Bot servisi yeniden başlatılıyor...</b>")
+            try:
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, lambda: subprocess.run(["systemctl", "restart", "discord-ai-bot.service"], check=True))
+                await asyncio.sleep(2)
+                status_text = get_service_status()
+                await send_message(client, token, authorized_chat_id, f"✅ <b>Yeniden başlatıldı!</b>\n\n{status_text}")
+            except Exception as e:
+                await send_message(client, token, authorized_chat_id, f"❌ Yeniden başlatma başarısız:\n<code>{e}</code>")
+        else:
+            await send_message(client, token, authorized_chat_id, f"Bilinmeyen servis: <code>{target}</code>. Kullanım: <code>/restart discord</code>")
 
     elif text_lower.startswith("/backup"):
         target = raw_text[len("/backup"):].strip().lower()
@@ -113,7 +216,6 @@ async def handle_update(client: httpx.AsyncClient, token: str, authorized_chat_i
                 "⏳ <b>Discord AI Bot hafıza yedeği hazırlanıyor...</b>\nAtomik SQLite snapshot alınıyor, lütfen birkaç saniye bekle.",
             )
             try:
-                # Run the backup in a separate thread so event loop is not blocked
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, lambda: execute_backup(trigger_name="Manuel Komut (/backup discord)"))
             except Exception as e:
@@ -123,12 +225,12 @@ async def handle_update(client: httpx.AsyncClient, token: str, authorized_chat_i
             await send_message(client, token, authorized_chat_id, f"Bilinmeyen yedek hedefi: <code>{target}</code>. Kullanım: <code>/backup discord</code>")
 
     else:
-        await send_message(client, token, authorized_chat_id, "Bilinmeyen komut. Kullanabileceğin komutları görmek için: /help")
+        await send_message(client, token, authorized_chat_id, "Bilinmeyen komut. Komut listesi için: /help")
 
 
 async def run_bot() -> None:
     token, authorized_chat_id = load_env()
-    logger.info("Starting Telegram Backup Bot daemon for authorized chat_id=%s...", authorized_chat_id)
+    logger.info("Starting Telegram Backup & Puppet Bot daemon for authorized chat_id=%s...", authorized_chat_id)
 
     offset = 0
     poll_url = f"https://api.telegram.org/bot{token}/getUpdates"
@@ -151,7 +253,6 @@ async def run_bot() -> None:
                     await asyncio.sleep(3)
 
             except httpx.TimeoutException:
-                # Standard long polling timeout, just loop again
                 continue
             except asyncio.CancelledError:
                 logger.info("Daemon cancelled, shutting down.")
