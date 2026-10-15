@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import tiktoken
 from datetime import datetime, timezone
 
 import discord
@@ -159,6 +160,8 @@ class DiscordMemory:
             await asyncio.sleep(3600)
 
     def pending(self):
+        os.environ.setdefault("TIKTOKEN_CACHE_DIR", str(self.root / "cache" / "tiktoken"))
+        encoding = tiktoken.get_encoding("o200k_base")
         with self.db() as db:
             first = db.execute("SELECT channel FROM messages WHERE analyzed=0 ORDER BY id LIMIT 1").fetchone()
             if not first:
@@ -166,10 +169,18 @@ class DiscordMemory:
             rows = db.execute("SELECT * FROM messages WHERE analyzed=0 AND channel=? ORDER BY id LIMIT 80", (first[0],)).fetchall()
         batch, size = [], 0
         for row in rows:
-            if batch and size + len(row["content"]) > 12000:
+            item = dict(row)
+            line = json.dumps({k:item[k] for k in ("id","author","name","created","content","url")},ensure_ascii=False)
+            tokens = len(encoding.encode(line,disallowed_special=()))
+            if batch and size + tokens > 3500:
                 break
-            batch.append(dict(row))
-            size += len(row["content"])
+            # Discord permits unusually token-dense content; summarize the bounded
+            # excerpt while retaining the full original in the searchable archive.
+            if tokens > 3500:
+                item["content"] = encoding.decode(encoding.encode(item["content"],disallowed_special=())[:2800])
+                item["content"] += " [analiz alıntısı kısaltıldı; tam metin arşivde]"
+            batch.append(item)
+            size += tokens
         return batch
 
     async def analyze_once(self):

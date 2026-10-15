@@ -7,6 +7,7 @@ apscheduler>=3.10.0
 ollama
 python-dotenv
 typing_extensions
+tiktoken>=0.12.0
 rich
 requests
 yfinance
