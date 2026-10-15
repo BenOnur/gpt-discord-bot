@@ -510,6 +510,11 @@ async def on_ready() -> None:
         scheduler.start()
         setup_scheduled_tasks()
         logging.info("Scheduler started")
+    try:
+        from bot.llm.tools.reminder import restore_pending_reminders
+        restore_pending_reminders(discord_bot, scheduler)
+    except Exception as e:
+        logging.warning("Failed to restore reminders: %s", e)
 
 
 @discord_bot.event
@@ -572,6 +577,17 @@ async def on_message(new_msg: discord.Message) -> None:
 
     if is_bad_user or is_bad_channel:
         return
+
+    from bot.llm.tools.discord_ctx import set_current_discord_context
+    set_current_discord_context({
+        "bot": discord_bot,
+        "message": new_msg,
+        "channel": new_msg.channel,
+        "guild": new_msg.guild,
+        "author": new_msg.author,
+        "scheduler": scheduler,
+        "config": config,
+    })
 
     provider_slash_model = curr_model
     provider, model = provider_slash_model.removesuffix(":vision").split("/", 1)
@@ -717,7 +733,10 @@ async def on_message(new_msg: discord.Message) -> None:
     api_messages = []
     for m in messages[::-1]:
         if isinstance(m.get("content"), list):
-            api_messages.append({"role": m["role"], "content": " ".join(c.get("text", "") for c in m["content"] if c.get("type") == "text")})
+            if accept_images:
+                api_messages.append(m)
+            else:
+                api_messages.append({"role": m["role"], "content": " ".join(c.get("text", "") for c in m["content"] if c.get("type") == "text")})
         else:
             api_messages.append(m)
     if sys_prompt:

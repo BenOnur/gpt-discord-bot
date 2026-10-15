@@ -4,7 +4,7 @@ bot_token: ${DISCORD_BOT_TOKEN}
 client_id: ${DISCORD_CLIENT_ID}
 status_message: Gemini + Groq
 max_text: 12000
-max_images: 0
+max_images: 2
 max_messages: 12
 use_plain_responses: true
 show_embed_color: false
@@ -51,6 +51,11 @@ models:
       - calculate
       - get_current_time
       - wikipedia_search
+      - set_reminder
+      - read_url
+      - get_user_profile
+      - search_server_history
+      - react_to_message
     supports_tools: true
     max_tokens: 1024
   groq/openai/gpt-oss-120b:
@@ -62,6 +67,11 @@ models:
       - calculate
       - get_current_time
       - wikipedia_search
+      - set_reminder
+      - read_url
+      - get_user_profile
+      - search_server_history
+      - react_to_message
     supports_tools: true
     max_tokens: 1024
 # Both models passed a live completion probe on the deployment account.

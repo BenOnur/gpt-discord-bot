@@ -19,6 +19,11 @@ This file is the skill index for the bot. Each tool has its own skill doc under
 | 🔢 `calculate` | [`calculate.py`](bot/llm/tools/calculate.py) | Any | Safe math arithmetic, power, root, trig evaluation |
 | ⏰ `get_current_time` | [`time_tool.py`](bot/llm/tools/time_tool.py) | Any | Real-time date, time, and weekday (Turkey / Europe/Istanbul) |
 | 📖 `wikipedia_search` | [`wikipedia.py`](bot/llm/tools/wikipedia.py) | Any | Article summaries from Wikipedia (TR/EN, zero key) |
+| ⏰ `set_reminder` | [`reminder.py`](bot/llm/tools/reminder.py) | Any | Natural language reminder timer with SQLite persistence & tagging |
+| 🔗 `read_url` | [`read_url.py`](bot/llm/tools/read_url.py) | Any | Read & summarize web articles, tweets (X), and YouTube videos |
+| 👤 `get_user_profile` | [`get_user_profile.py`](bot/llm/tools/get_user_profile.py) | Any | Server member profile & activity analyzer from message archive |
+| 📜 `search_server_history` | [`server_history.py`](bot/llm/tools/server_history.py) | Any | Full-text FTS5 search across server channels and quotes |
+| 🎭 `react_to_message` | [`react.py`](bot/llm/tools/react.py) | Any | React to user messages with Discord emojis (💀, 🤡, 🗿, etc.) |
 | 📊 `visuals_core` | [`skills/visuals_core.md`](bot/llm/tools/skills/visuals_core.md) | Any | ASCII/Markdown charts, tables, timelines |
 | 📈 `get_market_prices` | [`skills/yahoo_finance.md`](bot/llm/tools/skills/yahoo_finance.md) | Any | Stock/crypto/index prices from Yahoo Finance |
 | 📧 `google_tools` | [`skills/google_tools.md`](bot/llm/tools/skills/google_tools.md) | Any | Gmail + Calendar (read-only) |
