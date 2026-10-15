@@ -10,6 +10,7 @@ import re
 import sys
 
 import discord
+from discord import app_commands
 from discord.app_commands import Choice
 from discord.ext import commands
 import httpx
