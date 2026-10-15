@@ -51,6 +51,13 @@ KNOWN_CHANNELS = {
 KNOWN_CLUSTERS = {
     "onur": [630153541465538561, 1498684197370597438, 1475228353211666595],
     "sez": [962397030544707695, 809050354133237760],
+    "yakup": [1403857873292759161, 456226577798135808],
+}
+
+CLUSTER_EXTRA_ALIASES = {
+    "yakup": ["jambenoire", "yakup", "yakub", "deleted user"],
+    "onur": ["onur", "benonur", "witch"],
+    "sez": ["sez", "sezrage", "kürtçük"],
 }
 
 
@@ -384,14 +391,20 @@ def compile_all() -> None:
                         INSERT OR REPLACE INTO user_profile_links (author_id, canonical_author_id, name)
                         VALUES (?, ?, ?)
                     """, (aid, canon_id, un))
-            db.execute("""
-                INSERT OR REPLACE INTO user_profile_links (author_id, canonical_author_id, name)
-                VALUES (?, ?, ?)
-            """, (aid, canon_id, canon_name))
+        # Also register extra aliases
+        for alias in CLUSTER_EXTRA_ALIASES.get(canon_name, []):
+            for aid in aids:
+                db.execute("""
+                    INSERT OR REPLACE INTO user_profile_links (author_id, canonical_author_id, name)
+                    VALUES (?, ?, ?)
+                """, (aid, canon_id, alias))
 
         # Write to Vault
         try:
             write_vault_profile(canon_name, dossier)
+            for alias in CLUSTER_EXTRA_ALIASES.get(canon_name, []):
+                if alias.lower() not in ("deleted user", canon_name.lower()):
+                    write_vault_profile(alias, dossier)
         except Exception as e:
             logger.warning("Failed to write vault markdown for %s: %s", canon_name, e)
 

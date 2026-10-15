@@ -92,6 +92,13 @@ def get_user_profile(user_query: str) -> str:
         except sqlite3.OperationalError:
             pass
 
+        KNOWN_CLUSTERS = {
+            "onur": [630153541465538561, 1498684197370597438, 1475228353211666595],
+            "sez": [962397030544707695, 809050354133237760],
+            "yakup": [1403857873292759161, 456226577798135808],
+            "jambenoire": [1403857873292759161, 456226577798135808],
+        }
+
         author_ids: list[int] = []
         if target_name:
             matches = db.execute(
@@ -102,6 +109,12 @@ def get_user_profile(user_query: str) -> str:
 
         if target_id and target_id not in author_ids:
             author_ids.append(target_id)
+
+        for cl_key, cl_ids in KNOWN_CLUSTERS.items():
+            if (target_name and cl_key in target_name.lower()) or (clean_query and cl_key in clean_query.lower()) or any(i in cl_ids for i in author_ids):
+                for cid in cl_ids:
+                    if cid not in author_ids:
+                        author_ids.append(cid)
 
         if not author_ids:
             return f"'{clean_query}' adına ait sunucu arşivinde mesaj bulunamadı."
