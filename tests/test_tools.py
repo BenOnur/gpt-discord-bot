@@ -151,6 +151,12 @@ class ToolsTest(unittest.TestCase):
         # Check PNG header
         self.assertTrue(png_bytes.startswith(b"\x89PNG\r\n\x1a\n"))
 
+    def test_server_trivia_basic(self):
+        from bot.llm.tools.trivia import server_trivia
+        # Without Discord loop
+        res = server_trivia(query="cs2")
+        self.assertIn("Server trivia başlatıldı", res)
+
     def test_tool_registry_discovery(self):
         registry = build_tool_registry()
         expected = [
@@ -170,6 +176,7 @@ class ToolsTest(unittest.TestCase):
             "drama_judge",
             "voice_speak",
             "generate_quote",
+            "server_trivia",
         ]
         for tool_name in expected:
             self.assertIn(tool_name, registry, f"Tool '{tool_name}' should be in registry")

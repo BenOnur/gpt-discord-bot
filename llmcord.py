@@ -545,6 +545,58 @@ async def quote_command(
         await interaction.followup.send(f"❌ Quote oluşturulamadı: {err}", ephemeral=True)
 
 
+@discord_bot.tree.command(name="kimdedi", description="Bunu Kim Söyledi? Sunucu arşivinden alıntıyla 4 şıklı trivia oyunu başlatır")
+@app_commands.describe(
+    arama="Belirli bir kelimeyi içeren mesajları sormak için opsiyonel arama terimi (örn: cs2, para)",
+)
+async def kimdedi_command(
+    interaction: discord.Interaction,
+    arama: str = None,
+) -> None:
+    data_dir = config.get("memory", {}).get("data_dir", "/var/lib/discord-ai-memory")
+    from bot.trivia.game import get_random_trivia, TriviaView
+    trivia_data = await asyncio.to_thread(get_random_trivia, data_dir=data_dir, search_query=arama)
+    if not trivia_data:
+        await interaction.response.send_message(
+            "❌ Sunucu arşivinde uygun bir mesaj bulunamadı veya arama kriteriyle eşleşen alıntı yok.",
+            ephemeral=True,
+        )
+        return
+
+    view = TriviaView(trivia_data=trivia_data, data_dir=data_dir)
+    embed = view.build_embed()
+    await interaction.response.send_message(embed=embed, view=view)
+    msg = await interaction.original_response()
+    view.message = msg
+
+
+@discord_bot.tree.command(name="kimdedi_skor", description="Bunu Kim Söyledi? oyununun en çok bilenler liderlik tablosunu gösterir")
+async def kimdedi_skor_command(interaction: discord.Interaction) -> None:
+    data_dir = config.get("memory", {}).get("data_dir", "/var/lib/discord-ai-memory")
+    from bot.trivia.game import get_trivia_leaderboard
+    board = await asyncio.to_thread(get_trivia_leaderboard, data_dir=data_dir, limit=10)
+    if not board:
+        await interaction.response.send_message(
+            "🏆 Henüz kaydedilmiş bir trivia skoru yok. İlk puanı kapmak için `/kimdedi` başlat!",
+            ephemeral=True,
+        )
+        return
+
+    lines = ["**En Çok Doğru Tahmin Yapanlar:**\n"]
+    medals = ["🥇", "🥈", "🥉"] + [f"{i}." for i in range(4, 11)]
+    for idx, row in enumerate(board):
+        m = medals[idx] if idx < len(medals) else f"{idx+1}."
+        lines.append(f"{m} **{row['user_name']}**: {row['points']} Puan ({row['wins']} Galibiyet)")
+
+    embed = discord.Embed(
+        title="🏆 Bunu Kim Söyledi? - Liderlik Tablosu",
+        description="\n".join(lines),
+        color=0xFEE75C,
+    )
+    embed.set_footer(text="Her doğru tahmin +10 Racon Puanı kazandırır.")
+    await interaction.response.send_message(embed=embed)
+
+
 # ── Events ───────────────────────────────────────────────────────────────────
 
 @discord_bot.event
@@ -698,6 +750,27 @@ async def on_message(new_msg: discord.Message) -> None:
                 return
             except Exception as e:
                 logging.error(f"Fast path quote failed: {e}", exc_info=True)
+
+    # Fast-path for trivia game: e.g. "@bot kim dedi", "bunu kim dedi", "trivia başlat"
+    clean_prompt = re.sub(r"<@!?[0-9]+>", "", new_msg.content).strip().lower()
+    is_trivia_req = (
+        clean_prompt in {"kim dedi", "bunu kim dedi", "kim söyledi", "trivia", "trivia başlat", "kim dedi oyunu", "oyun başlat"}
+        or any(clean_prompt.startswith(p) for p in ("kim dedi", "bunu kim dedi", "kim söyledi", "trivia başlat"))
+    )
+    if is_trivia_req:
+        from bot.llm.tools.trivia import _async_start_trivia
+        try:
+            await _async_start_trivia(None, False, {
+                "bot": discord_bot,
+                "message": new_msg,
+                "channel": new_msg.channel,
+                "guild": new_msg.guild,
+                "author": new_msg.author,
+                "config": config,
+            })
+            return
+        except Exception as e:
+            logging.error(f"Fast path trivia failed: {e}", exc_info=True)
 
 
     provider_slash_model = curr_model

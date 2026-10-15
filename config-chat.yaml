@@ -70,6 +70,7 @@ models:
       - fact_check
       - server_wiki
       - generate_quote
+      - server_trivia
     supports_tools: true
     max_tokens: 2048
   groq/openai/gpt-oss-120b:
@@ -91,6 +92,7 @@ models:
       - fact_check
       - server_wiki
       - generate_quote
+      - server_trivia
     supports_tools: true
     max_tokens: 2048
 # Both models passed a live completion probe on the deployment account.
