@@ -748,6 +748,31 @@ async def on_message(new_msg: discord.Message) -> None:
     if new_msg.author.bot:
         return
 
+    config = await asyncio.to_thread(get_config)
+
+    # DM Security & Whitelist: Only respond in DM to allowed user (default Onur: 1498684197370597438)
+    if is_dm:
+        allowed_dm_ids = set()
+        for uid in (config.get("dm_allowed_user_ids") or []):
+            try:
+                allowed_dm_ids.add(int(uid))
+            except (ValueError, TypeError):
+                pass
+        for uid in config.get("permissions", {}).get("users", {}).get("admin_ids", []):
+            try:
+                allowed_dm_ids.add(int(uid))
+            except (ValueError, TypeError):
+                pass
+        if not allowed_dm_ids:
+            allowed_dm_ids.add(1498684197370597438)
+
+        if new_msg.author.id not in allowed_dm_ids:
+            logging.info(f"DM_IGNORED: author_id={new_msg.author.id} is not authorized for DMs")
+            return
+        if not new_msg.content.strip():
+            logging.info(f"DM_IGNORED: message from {new_msg.author.id} has no text content")
+            return
+
     # Check if the message is a reply to the bot
     is_reply_to_bot = (
         bool(new_msg.reference)
@@ -771,10 +796,9 @@ async def on_message(new_msg: discord.Message) -> None:
         # Untagged message in server: check zero-token spontaneous banter
         try:
             from bot.chat.spontaneous import maybe_handle_spontaneous
-            cfg = await asyncio.to_thread(get_config)
             await maybe_handle_spontaneous(
                 new_msg,
-                cfg,
+                config,
                 curr_model,
                 curr_persona,
                 build_openai_client,
@@ -787,7 +811,6 @@ async def on_message(new_msg: discord.Message) -> None:
     role_ids = set(role.id for role in getattr(new_msg.author, "roles", ()))
     channel_ids = set(filter(None, (new_msg.channel.id, getattr(new_msg.channel, "parent_id", None), getattr(new_msg.channel, "category_id", None))))
 
-    config = await asyncio.to_thread(get_config)
     perms = config["permissions"]
     user_is_admin = new_msg.author.id in perms["users"]["admin_ids"]
 
@@ -795,7 +818,7 @@ async def on_message(new_msg: discord.Message) -> None:
         (p["allowed_ids"], p["blocked_ids"]) for p in (perms["users"], perms["roles"], perms["channels"])
     )
 
-    allow_all_users = not allowed_uids if is_dm else not allowed_uids and not allowed_rids
+    allow_all_users = False if is_dm else (not allowed_uids and not allowed_rids)
     is_good_user = user_is_admin or allow_all_users or new_msg.author.id in allowed_uids or any(i in allowed_rids for i in role_ids)
     is_bad_user = not is_good_user or new_msg.author.id in blocked_uids or any(i in blocked_rids for i in role_ids)
 
@@ -1104,30 +1127,38 @@ async def on_message(new_msg: discord.Message) -> None:
 
     logging.info(f"Message (uid:{new_msg.author.id}, att:{len(new_msg.attachments)}, len:{len(messages)})")
 
-    # System prompt: model-specific > current > global
+    # System prompt: in DM use clean Gemini assistant prompt (no persona, no server rules)
     sys_prompt = ""
-    if isinstance(model_params, dict):
-        persona_name = model_params.get("persona")
-        if persona_name:
-            sys_prompt = try_load_persona(persona_name) or ""
+    if is_dm:
+        sys_prompt = config.get("dm_system_prompt") or (
+            "Sen Google tarafından geliştirilmiş yardımsever, zeki, çok yönlü ve doğal bir yapay zeka asistanısın (Gemini). "
+            "Kullanıcıya samimi, nazik, net ve doğrudan yardımcı olursun. "
+            "Herhangi bir kısıtlama, özel sunucu personası veya kaba rol yapma olmadan standart ve güçlü bir yapay zeka asistanı olarak yanıt verirsin."
+        )
+    else:
+        if isinstance(model_params, dict):
+            persona_name = model_params.get("persona")
+            if persona_name:
+                sys_prompt = try_load_persona(persona_name) or ""
+            if not sys_prompt:
+                sys_prompt = model_params.get("system_prompt") or ""
+        if not sys_prompt and curr_persona:
+            sys_prompt = try_load_persona(curr_persona) or ""
         if not sys_prompt:
-            sys_prompt = model_params.get("system_prompt") or ""
-    if not sys_prompt and curr_persona:
-        sys_prompt = try_load_persona(curr_persona) or ""
-    if not sys_prompt:
-        global_persona = config.get("persona")
-        if global_persona:
-            sys_prompt = try_load_persona(global_persona) or ""
-        if not sys_prompt:
-            sys_prompt = config.get("system_prompt") or ""
+            global_persona = config.get("persona")
+            if global_persona:
+                sys_prompt = try_load_persona(global_persona) or ""
+            if not sys_prompt:
+                sys_prompt = config.get("system_prompt") or ""
     if sys_prompt:
         sys_prompt = format_system_prompt(sys_prompt, accept_usernames)
 
-    # Build API messages
-    try:
-        sys_prompt += await asyncio.wait_for(memory.recall(new_msg), timeout=20)
-    except Exception as exc:
-        logging.warning("Memory recall unavailable (%s)", type(exc).__name__)
+    # Build API messages (skip server memory recall in DMs)
+    if not is_dm:
+        try:
+            sys_prompt += await asyncio.wait_for(memory.recall(new_msg), timeout=20)
+        except Exception as exc:
+            logging.warning("Memory recall unavailable (%s)", type(exc).__name__)
     api_messages = []
     for m in messages[::-1]:
         if isinstance(m.get("content"), list):
