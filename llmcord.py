@@ -613,6 +613,39 @@ async def kimdedi_siralama_command(interaction: discord.Interaction) -> None:
 discord_bot.tree.add_command(kimdedi_group)
 
 
+@discord_bot.tree.command(name="taklit", description="Sunucudaki bir üyenin AI dijital ikizini konuşturur")
+@app_commands.describe(
+    kullanici="Taklit edilecek sunucu üyesi",
+    konu="Klonun konuşacağı konu veya sorulacak soru",
+)
+async def taklit_command(
+    interaction: discord.Interaction,
+    kullanici: discord.Member,
+    konu: str,
+) -> None:
+    await interaction.response.defer()
+    from bot.clone.simulator import generate_clone_reply, build_clone_embed
+
+    cfg = await asyncio.to_thread(get_config)
+    try:
+        reply_text = await generate_clone_reply(
+            target_user=kullanici,
+            topic_or_question=konu,
+            config=cfg,
+            curr_model=curr_model,
+            build_client_fn=build_openai_client,
+        )
+        embed = build_clone_embed(
+            target_user=kullanici,
+            question_or_topic=konu,
+            clone_response=reply_text,
+        )
+        await interaction.followup.send(embed=embed)
+    except Exception as e:
+        logging.error("Failed to generate clone reply: %s", e, exc_info=True)
+        await interaction.followup.send(f"❌ Klon konuşturulurken hata oluştu: {e}", ephemeral=True)
+
+
 # ── Events ───────────────────────────────────────────────────────────────────
 
 @discord_bot.event
@@ -706,6 +739,7 @@ async def on_message(new_msg: discord.Message) -> None:
         "/kimdedi_skor", "!kimdedi_skor",
         "/quote", "!quote",
         "/skor", "!skor",
+        "/taklit", "!taklit",
     ))
 
     if not is_dm and not is_mentioned and not is_text_cmd:
@@ -875,6 +909,47 @@ async def on_message(new_msg: discord.Message) -> None:
             return
         except Exception as e:
             logging.error(f"Fast path trivia failed: {e}", exc_info=True)
+
+    # Fast-path for AI clone impersonation:
+    # e.g. "/taklit @kullanıcı <konu>", "!taklit @kullanıcı <konu>", "@bot taklit et @kullanıcı <konu>"
+    is_taklit_req = clean_prompt.startswith(("/taklit", "!taklit", "taklit et", "taklit"))
+    if is_taklit_req:
+        target_member = None
+        for m in new_msg.mentions:
+            if m.id != discord_bot.user.id:
+                target_member = m
+                break
+
+        topic = ""
+        raw_cmd = new_msg.content.strip()
+        for pfx in ("/taklit", "!taklit", "taklit et", "taklit"):
+            if clean_prompt.startswith(pfx):
+                remainder = raw_cmd[len(pfx):].strip()
+                if target_member:
+                    remainder = re.sub(r"<@!?" + str(target_member.id) + r">", "", remainder).strip()
+                topic = remainder
+                break
+
+        if target_member and topic:
+            from bot.clone.simulator import generate_clone_reply, build_clone_embed
+            try:
+                async with new_msg.channel.typing():
+                    reply_text = await generate_clone_reply(
+                        target_user=target_member,
+                        topic_or_question=topic,
+                        config=config,
+                        curr_model=curr_model,
+                        build_client_fn=build_openai_client,
+                    )
+                    embed = build_clone_embed(
+                        target_user=target_member,
+                        question_or_topic=topic,
+                        clone_response=reply_text,
+                    )
+                    await new_msg.reply(embed=embed)
+                    return
+            except Exception as e:
+                logging.error(f"Fast path taklit failed: {e}", exc_info=True)
 
 
     provider_slash_model = curr_model
