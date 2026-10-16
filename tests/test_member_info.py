@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from bot.llm.tools.member_info import PresenceStore, member_info_request
+from bot.llm.tools.registry import build_tool_registry
 
 
 class PresenceStoreTests(unittest.TestCase):
@@ -70,6 +71,9 @@ class PresenceStoreTests(unittest.TestCase):
         self.assertEqual(member_info_request("Onur şu an ne oynuyor?"), "current_activity")
         self.assertEqual(member_info_request("Onur'un oyun geçmişi ne?"), "activity_history")
         self.assertIsNone(member_info_request("Onur bugün nasıldı?"))
+
+    def test_member_info_tool_is_auto_discovered(self):
+        self.assertIn("get_member_info", build_tool_registry())
 
 
 if __name__ == "__main__":
