@@ -608,19 +608,19 @@ async def on_ready() -> None:
     if config.get("enable_voice", True):
         from bot.voice import setup_voice_cog
         await setup_voice_cog(discord_bot, config)
+    # Clear any guild-specific commands so each command appears exactly once (no duplicates)
+    for guild in discord_bot.guilds:
+        try:
+            discord_bot.tree.clear_commands(guild=guild)
+            await discord_bot.tree.sync(guild=guild)
+            logging.info(f"Cleaned up guild command duplicates for: {guild.name} ({guild.id})")
+        except Exception as e:
+            logging.warning(f"Failed to clear guild commands for {guild.name} ({guild.id}): {e}")
+
     # Sync global command tree
     await discord_bot.tree.sync()
     commands = discord_bot.tree._get_all_commands()
     logging.info(f"Synced {len(commands)} global slash commands: {[c.name for c in commands]}")
-
-    # Instant sync to each guild so slash commands appear immediately in Discord UI (bypasses 1-hour CDN delay)
-    for guild in discord_bot.guilds:
-        try:
-            discord_bot.tree.copy_global_to(guild=guild)
-            await discord_bot.tree.sync(guild=guild)
-            logging.info(f"⚡ Instant guild-synced {len(commands)} slash commands to: {guild.name} ({guild.id})")
-        except Exception as e:
-            logging.warning(f"Failed to guild-sync slash commands to {guild.name} ({guild.id}): {e}")
     if not scheduler.running:
         scheduler.start()
         setup_scheduled_tasks()
@@ -636,16 +636,6 @@ async def on_ready() -> None:
         await start_ipc_server(discord_bot)
     except Exception as e:
         logging.warning("Failed to start IPC server: %s", e)
-
-
-@discord_bot.event
-async def on_guild_join(guild: discord.Guild) -> None:
-    try:
-        discord_bot.tree.copy_global_to(guild=guild)
-        await discord_bot.tree.sync(guild=guild)
-        logging.info(f"⚡ Instant guild-synced slash commands to newly joined guild: {guild.name} ({guild.id})")
-    except Exception as e:
-        logging.warning(f"Failed to sync commands to joined guild {guild.id}: {e}")
 
 
 @discord_bot.event
