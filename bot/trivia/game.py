@@ -295,7 +295,7 @@ class TriviaView(discord.ui.View):
                     if isinstance(child, TriviaButton):
                         child.disabled = True
                 embed = self.build_embed(
-                    status=f"🎉 **TEBRİKLER!** {interaction.user.mention} doğru bildi! (+10 Puan, Toplam: **{new_points}**)",
+                    status=f"🎉 **TEBRİKLER!** Doğru cevap! (+10 Puan, Toplam: **{new_points}**)",
                     revealed=True,
                 )
             else:
@@ -307,7 +307,13 @@ class TriviaView(discord.ui.View):
                 )
             # Edit the shared channel message, not a per-player response.
             message = self.message or interaction.message
-            await message.edit(embed=embed, view=self)
+            edit_kwargs = {"embed": embed, "view": self}
+            if self.answered:
+                # Footer/author text is not mention-aware. Native message
+                # content lets Discord resolve the member name/profile/style.
+                edit_kwargs["content"] = f"🎉 **Tebrikler** {interaction.user.mention}, doğru bildin!"
+                edit_kwargs["allowed_mentions"] = discord.AllowedMentions.none()
+            await message.edit(**edit_kwargs)
 
     async def on_timeout(self):
         async with self._state_lock:

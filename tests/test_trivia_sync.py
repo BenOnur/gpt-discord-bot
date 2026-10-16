@@ -61,6 +61,10 @@ class TriviaSyncTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.gather(view.handle_guess(first, correct), view.handle_guess(second, correct))
             award.assert_called_once()
         view.message.edit.assert_awaited_once()
+        winning_edit = view.message.edit.await_args.kwargs
+        self.assertIn("<@1>", winning_edit["content"])
+        self.assertNotIn("<@", winning_edit["embed"].footer.text)
+        self.assertFalse(winning_edit["allowed_mentions"].users)
         second.followup.send.assert_awaited_once()
 
     async def test_timeout_cannot_replace_a_winning_result(self):
