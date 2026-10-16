@@ -930,6 +930,16 @@ async def on_message(new_msg: discord.Message) -> None:
                 topic = remainder
                 break
 
+        if not target_member and new_msg.guild:
+            words = raw_cmd.split()
+            if len(words) >= 3:
+                candidate = words[1].lower().lstrip("@")
+                for gm in new_msg.guild.members:
+                    if candidate in (gm.name.lower(), gm.display_name.lower()):
+                        target_member = gm
+                        topic = " ".join(words[2:])
+                        break
+
         if target_member and topic:
             from bot.clone.simulator import generate_clone_reply, build_clone_embed
             try:
