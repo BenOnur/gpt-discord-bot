@@ -43,8 +43,7 @@ bot/config/tasks/*
 
 # Ignore bot/config/personas. But DO NOT ignore persona-template.md
 bot/config/personas/*
-!bot/config/personas/*example.md
-!bot/config/personas/sunucu-kankasi.md
+!bot/config/personas/*.md
 
 # Google API credentials (if used)
 credentials.json
