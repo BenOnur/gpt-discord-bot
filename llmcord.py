@@ -545,11 +545,21 @@ async def quote_command(
         await interaction.followup.send(f"❌ Quote oluşturulamadı: {err}", ephemeral=True)
 
 
-@discord_bot.tree.command(name="kimdedi", description="Bunu Kim Söyledi? Sunucu arşivinden alıntıyla 4 şıklı trivia oyunu başlatır")
+# ── Kimdedi Trivia Command Group ──────────────────────────────────────────
+kimdedi_group = app_commands.Group(
+    name="kimdedi",
+    description="Bunu Kim Söyledi? Sunucu arşivinden 4 şıklı trivia oyunu",
+)
+
+
+@kimdedi_group.command(
+    name="oyna",
+    description="Sunucu arşivinden alıntıyla 4 şıklı trivia oyunu başlatır",
+)
 @app_commands.describe(
     arama="Belirli bir kelimeyi içeren mesajları sormak için opsiyonel arama terimi (örn: cs2, para)",
 )
-async def kimdedi_command(
+async def kimdedi_oyna_command(
     interaction: discord.Interaction,
     arama: str = None,
 ) -> None:
@@ -570,14 +580,17 @@ async def kimdedi_command(
     view.message = msg
 
 
-@discord_bot.tree.command(name="kimdedi_skor", description="Bunu Kim Söyledi? oyununun en çok bilenler liderlik tablosunu gösterir")
-async def kimdedi_skor_command(interaction: discord.Interaction) -> None:
+@kimdedi_group.command(
+    name="siralama",
+    description="Bunu Kim Söyledi? liderlik tablosunu ve en çok bilenleri gösterir",
+)
+async def kimdedi_siralama_command(interaction: discord.Interaction) -> None:
     data_dir = config.get("memory", {}).get("data_dir", "/var/lib/discord-ai-memory")
     from bot.trivia.game import get_trivia_leaderboard
     board = await asyncio.to_thread(get_trivia_leaderboard, data_dir=data_dir, limit=10)
     if not board:
         await interaction.response.send_message(
-            "🏆 Henüz kaydedilmiş bir trivia skoru yok. İlk puanı kapmak için `/kimdedi` başlat!",
+            "🏆 Henüz kaydedilmiş bir trivia skoru yok. İlk puanı kapmak için `/kimdedi oyna` başlat!",
             ephemeral=True,
         )
         return
@@ -595,6 +608,9 @@ async def kimdedi_skor_command(interaction: discord.Interaction) -> None:
     )
     embed.set_footer(text="Her doğru tahmin +10 Racon Puanı kazandırır.")
     await interaction.response.send_message(embed=embed)
+
+
+discord_bot.tree.add_command(kimdedi_group)
 
 
 # ── Events ───────────────────────────────────────────────────────────────────
@@ -778,10 +794,24 @@ async def on_message(new_msg: discord.Message) -> None:
             logging.error(f"Fast path quote failed: {e}", exc_info=True)
 
     # Fast-path for trivia leaderboard:
+    # "/kimdedi sıralama", "/kimdedi siralama", "!kimdedi sıralama", "!kimdedi siralama",
     # "/kimdedi_skor", "!kimdedi_skor", "/skor", "!skor", "@bot trivia skor"
     is_trivia_score_req = (
-        clean_prompt in {"kimdedi_skor", "/kimdedi_skor", "!kimdedi_skor", "skor", "/skor", "!skor", "trivia skor", "trivia skorları", "trivia liderlik"}
-        or any(clean_prompt.startswith(p) for p in ("/kimdedi_skor", "!kimdedi_skor", "/skor", "!skor"))
+        clean_prompt in {
+            "kimdedi sıralama", "kimdedi siralama",
+            "/kimdedi sıralama", "/kimdedi siralama",
+            "!kimdedi sıralama", "!kimdedi siralama",
+            "sıralama", "siralama", "/sıralama", "/siralama",
+            "kimdedi_skor", "/kimdedi_skor", "!kimdedi_skor",
+            "skor", "/skor", "!skor",
+            "trivia skor", "trivia skorları", "trivia liderlik", "trivia sıralama",
+        }
+        or any(clean_prompt.startswith(p) for p in (
+            "/kimdedi sıralama", "/kimdedi siralama",
+            "!kimdedi sıralama", "!kimdedi siralama",
+            "kimdedi sıralama", "kimdedi siralama",
+            "/kimdedi_skor", "!kimdedi_skor", "/skor", "!skor",
+        ))
     )
     if is_trivia_score_req:
         from bot.llm.tools.trivia import _async_start_trivia
@@ -799,14 +829,33 @@ async def on_message(new_msg: discord.Message) -> None:
             logging.error(f"Fast path trivia score failed: {e}", exc_info=True)
 
     # Fast-path for trivia game:
-    # e.g. "/kimdedi", "!kimdedi", "@bot kim dedi", "bunu kim dedi", "trivia başlat"
+    # e.g. "/kimdedi", "!kimdedi", "/kimdedi oyna", "!kimdedi oyna", "@bot kim dedi", "bunu kim dedi", "trivia başlat"
     is_trivia_req = (
-        clean_prompt in {"kim dedi", "bunu kim dedi", "kim söyledi", "trivia", "trivia başlat", "kim dedi oyunu", "oyun başlat", "/kimdedi", "!kimdedi"}
-        or any(clean_prompt.startswith(p) for p in ("kim dedi", "bunu kim dedi", "kim söyledi", "trivia başlat", "/kimdedi", "!kimdedi"))
+        clean_prompt in {
+            "kim dedi", "bunu kim dedi", "kim söyledi", "trivia", "trivia başlat",
+            "kim dedi oyunu", "oyun başlat",
+            "/kimdedi", "!kimdedi",
+            "/kimdedi oyna", "!kimdedi oyna",
+            "/kimdedi başlat", "!kimdedi başlat",
+            "/kimdedi baslat", "!kimdedi baslat",
+        }
+        or any(clean_prompt.startswith(p) for p in (
+            "/kimdedi oyna", "!kimdedi oyna",
+            "/kimdedi başlat", "!kimdedi başlat",
+            "/kimdedi baslat", "!kimdedi baslat",
+            "/kimdedi", "!kimdedi",
+            "kim dedi", "bunu kim dedi", "kim söyledi", "trivia başlat",
+        ))
     )
     if is_trivia_req:
         search_query = None
-        for prefix in ("/kimdedi", "!kimdedi", "kim dedi", "bunu kim dedi", "kim söyledi", "trivia başlat"):
+        for prefix in (
+            "/kimdedi oyna", "!kimdedi oyna",
+            "/kimdedi başlat", "!kimdedi başlat",
+            "/kimdedi baslat", "!kimdedi baslat",
+            "/kimdedi", "!kimdedi",
+            "kim dedi", "bunu kim dedi", "kim söyledi", "trivia başlat",
+        ):
             if clean_prompt.startswith(prefix):
                 remainder = clean_prompt[len(prefix):].strip()
                 if remainder:

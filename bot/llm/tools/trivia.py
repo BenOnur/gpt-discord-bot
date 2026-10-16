@@ -30,7 +30,7 @@ async def _async_start_trivia(query: Optional[str], show_leaderboard: bool, ctx:
     if show_leaderboard:
         board = get_trivia_leaderboard(data_dir=data_dir, limit=10)
         if not board:
-            return "Henüz kayıtlı bir trivia skoru bulunmuyor. Bir oyun başlatmak için '/kimdedi' yaz!"
+            return "Henüz kayıtlı bir trivia skoru bulunmuyor. Bir oyun başlatmak için '/kimdedi oyna' yaz!"
         lines = ["🏆 **BUNU KİM SÖYLEDİ? - LİDERLİK TABLOSU**\n"]
         medals = ["🥇", "🥈", "🥉"] + [f"{i}." for i in range(4, 11)]
         for idx, row in enumerate(board):
