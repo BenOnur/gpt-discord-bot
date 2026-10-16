@@ -620,21 +620,20 @@ async def kimdedi_command(
     if not interaction.guild:
         await interaction.response.send_message("❌ Bu komut yalnızca sunucu kanallarında kullanılabilir.", ephemeral=True)
         return
+    await interaction.response.defer(thinking=True)
     data_dir = config.get("memory", {}).get("data_dir", "/var/lib/discord-ai-memory")
     from bot.trivia.game import get_random_trivia, TriviaView
 
     trivia_data = await asyncio.to_thread(get_random_trivia, data_dir=data_dir, search_query=arama)
     if not trivia_data:
-        await interaction.response.send_message(
-            "❌ Sunucu arşivinde uygun bir mesaj bulunamadı veya arama kriteriyle eşleşen alıntı yok.",
-            ephemeral=True,
+        await interaction.edit_original_response(
+            content="❌ Sunucu arşivinde uygun bir mesaj bulunamadı veya arama kriteriyle eşleşen alıntı yok.",
         )
         return
 
     view = TriviaView(trivia_data=trivia_data, data_dir=data_dir)
     embed = view.build_embed()
-    await interaction.response.send_message(embed=embed, view=view)
-    msg = await interaction.original_response()
+    msg = await interaction.edit_original_response(embed=embed, view=view)
     view.message = msg
 
 

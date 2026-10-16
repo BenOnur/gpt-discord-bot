@@ -257,6 +257,8 @@ class TriviaView(discord.ui.View):
         self.data_dir = data_dir
         self.correct_name = trivia_data["correct_author_name"]
         self.answered = False
+        self._state_lock = asyncio.Lock()
+        self._deadline = asyncio.get_running_loop().time() + timeout
         self.message: Optional[discord.Message] = None
 
         # Add 4 choice buttons
@@ -265,53 +267,53 @@ class TriviaView(discord.ui.View):
         self.add_item(TriviaLeaderboardButton())
 
     async def handle_guess(self, interaction: discord.Interaction, button: TriviaButton):
-        if self.answered:
-            await interaction.response.send_message("Bu soru zaten cevaplandı!", ephemeral=True)
-            return
+        # Acknowledge before waiting on another click or disk/network I/O.
+        await interaction.response.defer()
+        async with self._state_lock:
+            if self.answered:
+                await interaction.followup.send("Bu soru zaten cevaplandı!", ephemeral=True)
+                return
+            if asyncio.get_running_loop().time() >= self._deadline:
+                await self._finish_timeout()
+                await interaction.followup.send("Bu sorunun süresi doldu.", ephemeral=True)
+                return
+            if button.disabled:
+                await interaction.followup.send("Bu seçenek zaten elendi.", ephemeral=True)
+                return
 
-        chosen_name = button.option_name
-
-        if chosen_name == self.correct_name:
-            # Correct answer!
-            self.answered = True
-            button.style = discord.ButtonStyle.success
-
-            # Disable all buttons
-            for child in self.children:
-                if isinstance(child, TriviaButton):
-                    child.disabled = True
-
-            new_points = record_trivia_win(
-                interaction.user.id,
-                interaction.user.display_name,
-                self.data_dir,
-            )
-
-            embed = self.build_embed(
-                status=f"🎉 **TEBRİKLER!** {interaction.user.mention} doğru bildi! (+10 Puan, Toplam: **{new_points}**)",
-                revealed=True,
-            )
-
-            await interaction.response.edit_message(embed=embed, view=self)
-        else:
-            # Wrong answer!
-            button.style = discord.ButtonStyle.danger
-            button.disabled = True
-
-            # Check if all 3 wrong buttons clicked
-            remaining = [
-                child for child in self.children
-                if isinstance(child, discord.ui.Button) and not child.disabled
-            ]
-
-            embed = self.build_embed(
-                status=f"❌ {interaction.user.display_name} **{chosen_name}** dedi ama yanlış çıktı!",
-                revealed=False,
-            )
-
-            await interaction.response.edit_message(embed=embed, view=self)
+            chosen_name = button.option_name
+            if chosen_name == self.correct_name:
+                # The lock makes winner selection, scoring and shared-message
+                # publication one ordered transaction for concurrent players.
+                new_points = await asyncio.to_thread(
+                    record_trivia_win, interaction.user.id,
+                    interaction.user.display_name, self.data_dir,
+                )
+                self.answered = True
+                button.style = discord.ButtonStyle.success
+                for child in self.children:
+                    if isinstance(child, TriviaButton):
+                        child.disabled = True
+                embed = self.build_embed(
+                    status=f"🎉 **TEBRİKLER!** {interaction.user.mention} doğru bildi! (+10 Puan, Toplam: **{new_points}**)",
+                    revealed=True,
+                )
+            else:
+                button.style = discord.ButtonStyle.danger
+                button.disabled = True
+                embed = self.build_embed(
+                    status=f"❌ {interaction.user.display_name} **{chosen_name}** dedi ama yanlış çıktı!",
+                    revealed=False,
+                )
+            # Edit the shared channel message, not a per-player response.
+            message = self.message or interaction.message
+            await message.edit(embed=embed, view=self)
 
     async def on_timeout(self):
+        async with self._state_lock:
+            await self._finish_timeout()
+
+    async def _finish_timeout(self):
         if not self.answered:
             self.answered = True
             for child in self.children:
