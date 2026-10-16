@@ -100,6 +100,8 @@ intents.members = bool(config.get("enable_members", False))
 intents.presences = presence_tracker.enabled
 activity = discord.CustomActivity(name=(config.get("status_message") or "github.com/jakobdylanc/llmcord")[:128])
 discord_bot = commands.Bot(intents=intents, activity=activity, command_prefix=None)
+from bot.discord.self_reactions import install_self_reactions
+self_reactions = install_self_reactions(discord_bot, config)
 httpx_client = httpx.AsyncClient()
 
 
