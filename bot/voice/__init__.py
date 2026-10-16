@@ -55,6 +55,7 @@ class VoiceCog(commands.Cog):
     # ── Slash Commands ─────────────────────────────────────────────────────
     
     @app_commands.command(name="join", description="Join your voice channel")
+    @app_commands.guild_only()
     async def join_command(self, interaction: discord.Interaction):
         """Make the bot join the user's voice channel."""
         # Check if user is in a voice channel
@@ -97,6 +98,7 @@ class VoiceCog(commands.Cog):
             )
     
     @app_commands.command(name="leave", description="Leave the current voice channel")
+    @app_commands.guild_only()
     async def leave_command(self, interaction: discord.Interaction):
         """Make the bot leave its current voice channel."""
         # Check if bot is in a voice channel
@@ -130,6 +132,7 @@ class VoiceCog(commands.Cog):
     # ── TTS Command ────────────────────────────────────────────────────────
     
     @app_commands.command(name="speak", description="Make the bot speak in voice chat")
+    @app_commands.guild_only()
     @app_commands.describe(text="Text to speak")
     async def speak_command(self, interaction: discord.Interaction, text: str):
         """Make the bot speak the given text in voice channel."""

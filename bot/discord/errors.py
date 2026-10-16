@@ -49,6 +49,18 @@ async def handle_app_command_error(
     """
     Standard handler for slash command errors.
     """
+    from discord import app_commands
+    if isinstance(error, app_commands.CheckFailure):
+        msg = str(error) if str(error) else "Bu komutu veya DM etkileşimini kullanma yetkiniz yok."
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ {msg}", ephemeral=True)
+        except Exception:
+            pass
+        return
+
     logging.exception("App command error: %s", error)
     await notify_admin_error(
         discord_bot,
@@ -59,11 +71,11 @@ async def handle_app_command_error(
     try:
         if not interaction.response.is_done():
             await interaction.response.send_message(
-                "指令執行時發生錯誤，已通知管理員。", ephemeral=True
+                "Komut yürütülürken bir hata oluştu.", ephemeral=True
             )
         else:
             await interaction.followup.send(
-                "指令執行時發生錯誤，已通知管理員。", ephemeral=True
+                "Komut yürütülürken bir hata oluştu.", ephemeral=True
             )
     except Exception:  # noqa: BLE001
         pass

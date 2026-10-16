@@ -241,6 +241,42 @@ async def run_openai_with_tools(
 
 
 
+# ── Global Interaction Check (DM Security) ──────────────────────────────────
+
+async def global_tree_interaction_check(interaction: discord.Interaction) -> bool:
+    """
+    Global guard for all slash commands and autocomplete.
+    In DMs: ONLY allowed DM users (default Onur: 1498684197370597438) can interact with the bot.
+    Blocks any unauthorized user from executing commands, autocomplete, or accessing server data in DMs.
+    """
+    is_dm = interaction.guild is None or (interaction.channel and interaction.channel.type == discord.ChannelType.private)
+    if is_dm:
+        allowed_dm_ids = set()
+        cfg = get_config()
+        for uid in (cfg.get("dm_allowed_user_ids") or []):
+            try:
+                allowed_dm_ids.add(int(uid))
+            except (ValueError, TypeError):
+                pass
+        for uid in cfg.get("permissions", {}).get("users", {}).get("admin_ids", []):
+            try:
+                allowed_dm_ids.add(int(uid))
+            except (ValueError, TypeError):
+                pass
+        if not allowed_dm_ids:
+            allowed_dm_ids.add(1498684197370597438)
+
+        if interaction.user.id not in allowed_dm_ids:
+            cmd_name = getattr(interaction.command, "name", "unknown")
+            logging.warning(
+                f"DM_INTERACTION_BLOCKED: unauthorized user {interaction.user.id} tried '{cmd_name}' in DM"
+            )
+            raise app_commands.CheckFailure("Bu bot DM üzerinden yalnızca yetkili kullanıcıyla etkileşime girer.")
+    return True
+
+discord_bot.tree.interaction_check = global_tree_interaction_check
+
+
 # ── Slash commands ──────────────────────────────────────────────────────────
 
 @discord_bot.tree.command(name="model", description="View or switch the current model")
@@ -513,6 +549,7 @@ async def persona_autocomplete(interaction: discord.Interaction, curr_str: str) 
 
 
 @discord_bot.tree.command(name="quote", description="Generate an Equicord-style quote card for a message or text")
+@app_commands.guild_only()
 @app_commands.describe(
     message_id="ID or link of the message to quote (optional)",
     text="Custom text to quote (optional)",
@@ -570,6 +607,7 @@ async def quote_command(
 kimdedi_group = app_commands.Group(
     name="kimdedi",
     description="Bunu Kim Söyledi? Sunucu tahmin oyunu ve liderlik tablosu",
+    guild_only=True,
 )
 
 
@@ -584,6 +622,9 @@ async def kimdedi_oyna_command(
     interaction: discord.Interaction,
     arama: str = None,
 ) -> None:
+    if not interaction.guild:
+        await interaction.response.send_message("❌ Bu komut yalnızca sunucu kanallarında kullanılabilir.", ephemeral=True)
+        return
     data_dir = config.get("memory", {}).get("data_dir", "/var/lib/discord-ai-memory")
     from bot.trivia.game import get_random_trivia, TriviaView
 
@@ -607,6 +648,9 @@ async def kimdedi_oyna_command(
     description="Bunu Kim Söyledi? en çok bilenler liderlik tablosunu gösterir",
 )
 async def kimdedi_siralama_command(interaction: discord.Interaction) -> None:
+    if not interaction.guild:
+        await interaction.response.send_message("❌ Bu komut yalnızca sunucu kanallarında kullanılabilir.", ephemeral=True)
+        return
     data_dir = config.get("memory", {}).get("data_dir", "/var/lib/discord-ai-memory")
     from bot.trivia.game import get_trivia_leaderboard
 
@@ -637,6 +681,7 @@ discord_bot.tree.add_command(kimdedi_group)
 
 
 @discord_bot.tree.command(name="taklit", description="Sunucudaki bir üyenin AI dijital ikizini konuşturur")
+@app_commands.guild_only()
 @app_commands.describe(
     kullanici="Taklit edilecek sunucu üyesi",
     konu="Klonun konuşacağı konu veya sorulacak soru",
@@ -646,6 +691,9 @@ async def taklit_command(
     kullanici: discord.Member,
     konu: str,
 ) -> None:
+    if not interaction.guild:
+        await interaction.response.send_message("❌ Bu komut yalnızca sunucu kanallarında kullanılabilir.", ephemeral=True)
+        return
     await interaction.response.defer()
     from bot.clone.simulator import generate_clone_reply, build_clone_embed
 
