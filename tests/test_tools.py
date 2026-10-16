@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
 
 from bot.llm.tools.calculate import calculate
 from bot.llm.tools.time_tool import get_current_time
@@ -15,6 +16,8 @@ from bot.llm.tools.server_history import search_server_history
 from bot.llm.tools.react import react_to_message
 from bot.llm.tools.discord_ctx import set_current_discord_context
 from bot.llm.tools.registry import build_tool_registry
+from bot.chat.command_intents import trivia_intent
+from bot.llm.tools.profile_avatar import looks_like_avatar_request, _resolve_member
 
 
 class ToolsTest(unittest.TestCase):
@@ -157,6 +160,37 @@ class ToolsTest(unittest.TestCase):
         res = server_trivia(query="cs2")
         self.assertIn("Server trivia başlatıldı", res)
 
+    def test_natural_language_command_intents(self):
+        self.assertEqual(trivia_intent("kimdedi oyununu oynatsana bize"), "play")
+        self.assertEqual(trivia_intent("@bot kimdedi sıralamasını göstersene"), "leaderboard")
+        self.assertIsNone(trivia_intent("kimdedi komutu nasıl kullanılıyor"))
+
+    def test_profile_avatar_natural_language_detection(self):
+        self.assertTrue(looks_like_avatar_request("@orospuevladı @Onur'un profil fotoğrafını göndersene"))
+        self.assertTrue(looks_like_avatar_request("Apro'nun avatarını atsana"))
+        self.assertFalse(looks_like_avatar_request("Profil fotoğrafımı nasıl değiştiririm?"))
+
+    def test_profile_avatar_resolution_prefers_tagged_member(self):
+        onur = SimpleNamespace(id=1, name="onur", display_name="Onur", global_name="Onur")
+        bot_user = SimpleNamespace(id=99)
+        ctx = {
+            "guild": SimpleNamespace(members=[onur]),
+            "message": SimpleNamespace(mentions=[bot_user, onur], content="profil fotoğrafını gönder"),
+            "bot": SimpleNamespace(user=bot_user),
+        }
+        member, error = _resolve_member(None, ctx)
+        self.assertIs(member, onur)
+        self.assertIsNone(error)
+
+    def test_profile_avatar_resolution_reports_ambiguous_names(self):
+        first = SimpleNamespace(id=1, name="onur_a", display_name="Onur", global_name=None)
+        second = SimpleNamespace(id=2, name="onur_b", display_name="Onur", global_name=None)
+        guild = SimpleNamespace(members=[first, second], owner_id=3, get_member=lambda _id: None)
+        ctx = {"guild": guild, "message": SimpleNamespace(mentions=[], content=""), "bot": None}
+        member, error = _resolve_member("Onur", ctx)
+        self.assertIsNone(member)
+        self.assertIn("birden fazla", error)
+
     def test_tool_registry_discovery(self):
         registry = build_tool_registry()
         expected = [
@@ -177,6 +211,7 @@ class ToolsTest(unittest.TestCase):
             "voice_speak",
             "generate_quote",
             "server_trivia",
+            "send_profile_avatar",
         ]
         for tool_name in expected:
             self.assertIn(tool_name, registry, f"Tool '{tool_name}' should be in registry")

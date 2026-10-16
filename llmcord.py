@@ -890,12 +890,36 @@ async def on_message(new_msg: discord.Message) -> None:
 
     clean_prompt = re.sub(r"<@!?[0-9]+>", "", new_msg.content).strip().lower()
 
+    # Natural-language action fast paths should work just like their slash-command
+    # equivalents. These high-confidence Discord actions bypass model guesswork.
+    from bot.llm.tools.profile_avatar import looks_like_avatar_request, _async_send_profile_avatar
+    if looks_like_avatar_request(clean_prompt):
+        try:
+            await _async_send_profile_avatar(None, {
+                "bot": discord_bot,
+                "message": new_msg,
+                "channel": new_msg.channel,
+                "guild": new_msg.guild,
+                "author": new_msg.author,
+                "config": config,
+            })
+            return
+        except Exception as exc:
+            logging.error("Natural-language profile avatar action failed: %s", exc, exc_info=True)
+
     # Fast-path for quote request:
     # 1) When replying to another message with "@bot quote yap", "alıntıla", "/quote", "!quote"
     # 2) Or typed directly as "/quote <custom text>" / "!quote <custom text>"
+    from bot.chat.command_intents import normalize_intent_text
+    normalized_prompt = normalize_intent_text(clean_prompt)
+    quote_language_request = (
+        any(term in normalized_prompt for term in ("quote", "alinti", "soz karti", "racon karti"))
+        and any(term in normalized_prompt for term in ("yap", "olustur", "gonder", "cikar", "hazirla", "yapiver"))
+    )
     is_quote_on_reply = bool(new_msg.reference and new_msg.reference.message_id) and (
         clean_prompt in {"quote", "quote yap", "bunu quote yap", "alıntı yap", "alıntıla", "quote kartı", "söz kartı", "racon kartı", "/quote", "!quote"}
         or any(clean_prompt.startswith(prefix) for prefix in ("quote yap", "bunu quote yap", "alıntı yap", "quote et", "bunu alıntıla", "/quote", "!quote"))
+        or quote_language_request
     )
     is_direct_quote = clean_prompt.startswith(("/quote ", "!quote "))
 
@@ -926,7 +950,11 @@ async def on_message(new_msg: discord.Message) -> None:
     # Fast-path for trivia leaderboard:
     # "/kimdedi sıralama", "/kimdedi siralama", "!kimdedi sıralama", "!kimdedi siralama",
     # "/kimdedi_skor", "!kimdedi_skor", "/skor", "!skor", "@bot trivia skor"
+    from bot.chat.command_intents import trivia_intent
+    detected_trivia_intent = trivia_intent(clean_prompt)
     is_trivia_score_req = (
+        detected_trivia_intent == "leaderboard"
+        or
         clean_prompt in {
             "kimdedi sıralama", "kimdedi siralama",
             "/kimdedi sıralama", "/kimdedi siralama",
@@ -961,6 +989,8 @@ async def on_message(new_msg: discord.Message) -> None:
     # Fast-path for trivia game:
     # e.g. "/kimdedi", "!kimdedi", "/kimdedi oyna", "!kimdedi oyna", "@bot kim dedi", "bunu kim dedi", "trivia başlat"
     is_trivia_req = (
+        detected_trivia_intent == "play"
+        or
         clean_prompt in {
             "kim dedi", "bunu kim dedi", "kim söyledi", "trivia", "trivia başlat",
             "kim dedi oyunu", "oyun başlat",

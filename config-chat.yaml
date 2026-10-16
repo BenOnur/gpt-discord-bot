@@ -75,6 +75,7 @@ models:
       - generate_quote
       - server_trivia
       - impersonate_user
+      - send_profile_avatar
     supports_tools: true
     max_tokens: 2048
   groq/openai/gpt-oss-120b:
@@ -92,12 +93,16 @@ models:
       - analyze_personality
       - search_server_history
       - react_to_message
+      - daily_recap
+      - drama_judge
+      - voice_speak
       - catch_me_up
       - fact_check
       - server_wiki
       - generate_quote
       - server_trivia
       - impersonate_user
+      - send_profile_avatar
     supports_tools: true
     max_tokens: 2048
 # Both models passed a live completion probe on the deployment account.
