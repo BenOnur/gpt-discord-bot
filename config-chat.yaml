@@ -28,7 +28,7 @@ spontaneous_chat:
   probability: 0.15 # 15% random chance when threshold is reached
   boost_probability: 0.40 # 40% chance if drama/tilt keywords or ALL CAPS detected
 system_prompt: "Kullanıcıyla Türkçe konuş. Normal sohbette samimi, doğal ve esprili ol. Ancak kullanıcı kişilik analizi, karakter özeti, geçmiş hafıza veya detaylı bir inceleme istediğinde; araçlardan gelen somut mesaj alıntılarına, tarihlere ve kanıtlara dayanarak derinlemesine, zeki, gözlemci ve kapsamlı yanıt ver. Asla 'en çok konuşansın' gibi yüzeysel geçiştirmeler yapma."
-persona: sunucu-kankasi
+persona: Varsayılan
 permissions:
   users:
     admin_ids: []

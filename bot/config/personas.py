@@ -47,6 +47,21 @@ def load_persona(name: str) -> str:
                 return _read_text(path)
             return _read_yaml_prompt(path)
 
+    # Fallback: case-insensitive & Turkish character normalization
+    def _norm(s: str) -> str:
+        return s.lower().replace("ı", "i").replace("ğ", "g").replace("ü", "u").replace("ş", "s").replace("ö", "o").replace("ç", "c")
+
+    target_norm = _norm(name)
+    if target_norm == "sunucu-kankasi":
+        target_norm = "varsayilan"
+
+    for path in base.glob("*"):
+        if path.is_file() and path.suffix in {".md", ".txt", ".yaml", ".yml"}:
+            if _norm(path.stem) == target_norm:
+                if path.suffix in {".md", ".txt"}:
+                    return _read_text(path)
+                return _read_yaml_prompt(path)
+
     raise FileNotFoundError(f"Persona '{name}' not found in {PERSONAS_DIR}")
 
 
