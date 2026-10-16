@@ -314,17 +314,38 @@ async def refresh_command(interaction: discord.Interaction) -> None:
         await interaction.response.send_message(f"❌ Reload failed: {e}", ephemeral=True)
 
 
-@discord_bot.tree.command(name="skill", description="List available skills/tools")
+@discord_bot.tree.command(name="skill", description="Botun aktif yeteneklerini ve araçlarını listeler")
 async def skill_command(interaction: discord.Interaction):
-    if interaction.user.id not in config["permissions"]["users"]["admin_ids"]:
-        await interaction.response.send_message("❌ You don't have permission.", ephemeral=True)
-        return
+    await interaction.response.defer()
+    from bot.llm.tools.registry import get_tools
     tools = get_tools()
     if not tools:
-        await interaction.response.send_message("No skills/tools available.")
+        await interaction.followup.send("❌ Yüklü bir yetenek/araç bulunamadı.")
         return
-    response = "Available skills/tools:\n" + "\n".join([f"- **{name}**: {tool.schema.get('function', {}).get('description', 'No description available')}" for name, tool in tools.items()])
-    await interaction.response.send_message(response)
+
+    items = list(tools.items())
+    chunk_size = 11
+    embeds = []
+    total_pages = (len(items) + chunk_size - 1) // chunk_size
+
+    for i in range(0, len(items), chunk_size):
+        chunk = items[i:i + chunk_size]
+        page_num = (i // chunk_size) + 1
+
+        embed = discord.Embed(
+            title=f"🛠️ Bot Yetenekleri & Araçları ({len(items)} Adet)" if page_num == 1 else "🛠️ Yetenekler & Araçlar (Devamı)",
+            color=0x5865F2,
+        )
+        for name, tool in chunk:
+            desc = tool.schema.get("function", {}).get("description", "Açıklama bulunmuyor.")
+            if len(desc) > 130:
+                desc = desc[:127] + "..."
+            embed.add_field(name=f"`{name}`", value=desc, inline=False)
+
+        embed.set_footer(text=f"Sayfa {page_num}/{total_pages} • Toplam {len(items)} araç devrede")
+        embeds.append(embed)
+
+    await interaction.followup.send(embeds=embeds)
 
 
 @discord_bot.tree.command(name="task", description="List activated scheduled tasks")
@@ -599,14 +620,6 @@ async def kimdedi_command(
     await interaction.response.send_message(embed=embed, view=view)
     msg = await interaction.original_response()
     view.message = msg
-
-
-@discord_bot.tree.command(
-    name="siralama",
-    description="Bunu Kim Söyledi? oyununun en çok bilenler liderlik tablosunu gösterir",
-)
-async def siralama_command(interaction: discord.Interaction) -> None:
-    await kimdedi_command(interaction, arama=None, siralama=True)
 
 
 @discord_bot.tree.command(name="taklit", description="Sunucudaki bir üyenin AI dijital ikizini konuşturur")
