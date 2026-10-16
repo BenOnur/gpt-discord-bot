@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from types import SimpleNamespace
 
 from bot.llm.tools.calculate import calculate
@@ -18,6 +18,7 @@ from bot.llm.tools.discord_ctx import set_current_discord_context
 from bot.llm.tools.registry import build_tool_registry
 from bot.chat.command_intents import trivia_intent
 from bot.llm.tools.profile_avatar import looks_like_avatar_request, _resolve_member
+from bot.llm.tools.profile_avatar import _async_send_profile_avatar
 
 
 class ToolsTest(unittest.TestCase):
@@ -217,6 +218,56 @@ class ToolsTest(unittest.TestCase):
             self.assertIn(tool_name, registry, f"Tool '{tool_name}' should be in registry")
             self.assertIsNotNone(registry[tool_name].schema)
             self.assertIsNotNone(registry[tool_name].fn)
+
+
+class ProfileAvatarAsyncTest(unittest.IsolatedAsyncioTestCase):
+    async def test_sends_4096px_avatar_as_captioned_file(self):
+        class FakeAsset:
+            size = None
+            image_format = None
+
+            def is_animated(self):
+                return False
+
+            def with_format(self, image_format):
+                self.image_format = image_format
+                return self
+
+            def with_size(self, size):
+                self.size = size
+                return self
+
+            async def read(self):
+                return b"png-image-data"
+
+        asset = FakeAsset()
+        member = SimpleNamespace(
+            id=1, name="onur", display_name="Onur", global_name="Onur",
+            display_avatar=asset,
+        )
+        bot_user = SimpleNamespace(id=99)
+        channel = SimpleNamespace(send=AsyncMock())
+        message = SimpleNamespace(
+            mentions=[bot_user, member],
+            to_reference=MagicMock(return_value=object()),
+        )
+        ctx = {
+            "guild": SimpleNamespace(members=[member]),
+            "message": message,
+            "bot": SimpleNamespace(user=bot_user),
+            "channel": channel,
+        }
+
+        result = await _async_send_profile_avatar(None, ctx)
+
+        self.assertIn("4096 px", result)
+        self.assertEqual(asset.size, 4096)
+        self.assertEqual(asset.image_format, "png")
+        sent = channel.send.await_args.kwargs
+        self.assertIn("Onur", sent["content"])
+        self.assertEqual(sent["file"].filename, "Onur_avatar.png")
+        self.assertTrue(ctx["suppress_chat_reply"])
+        self.assertEqual(ctx["suppress_reaction"], "📷")
 
 
 if __name__ == "__main__":
