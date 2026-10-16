@@ -567,45 +567,25 @@ async def quote_command(
 
 
 # ── Kimdedi Trivia Slash Commands ──────────────────────────────────────────
-@discord_bot.tree.command(
+kimdedi_group = app_commands.Group(
     name="kimdedi",
-    description="Bunu Kim Söyledi? Sunucu arşivinden 4 şıklı trivia oyununu başlatır",
+    description="Bunu Kim Söyledi? Sunucu tahmin oyunu ve liderlik tablosu",
+)
+
+
+@kimdedi_group.command(
+    name="oyna",
+    description="Bunu Kim Söyledi? 4 şıklı trivia oyununu başlatır",
 )
 @app_commands.describe(
-    arama="Belirli bir kelimeyi içeren mesajları sormak için opsiyonel arama terimi (örn: cs2, para)",
-    siralama="Oyunu başlatmak yerine en çok bilenler liderlik tablosunu gösterir",
+    arama="Belirli bir kelimeyi içeren mesajları sormak için opsiyonel filtre (örn: cs2, para)",
 )
-async def kimdedi_command(
+async def kimdedi_oyna_command(
     interaction: discord.Interaction,
     arama: str = None,
-    siralama: bool = False,
 ) -> None:
     data_dir = config.get("memory", {}).get("data_dir", "/var/lib/discord-ai-memory")
-    from bot.trivia.game import get_random_trivia, get_trivia_leaderboard, TriviaView
-
-    if siralama:
-        board = await asyncio.to_thread(get_trivia_leaderboard, data_dir=data_dir, limit=10)
-        if not board:
-            await interaction.response.send_message(
-                "🏆 Henüz kaydedilmiş bir trivia skoru yok. İlk puanı kapmak için `/kimdedi` başlat!",
-                ephemeral=True,
-            )
-            return
-
-        lines = ["**En Çok Doğru Tahmin Yapanlar:**\n"]
-        medals = ["🥇", "🥈", "🥉"] + [f"{i}." for i in range(4, 11)]
-        for idx, row in enumerate(board):
-            m = medals[idx] if idx < len(medals) else f"{idx+1}."
-            lines.append(f"{m} **{row['user_name']}**: {row['points']} Puan ({row['wins']} Galibiyet)")
-
-        embed = discord.Embed(
-            title="🏆 Bunu Kim Söyledi? - Liderlik Tablosu",
-            description="\n".join(lines),
-            color=0xFEE75C,
-        )
-        embed.set_footer(text="Her doğru tahmin +10 Racon Puanı kazandırır.")
-        await interaction.response.send_message(embed=embed)
-        return
+    from bot.trivia.game import get_random_trivia, TriviaView
 
     trivia_data = await asyncio.to_thread(get_random_trivia, data_dir=data_dir, search_query=arama)
     if not trivia_data:
@@ -620,6 +600,40 @@ async def kimdedi_command(
     await interaction.response.send_message(embed=embed, view=view)
     msg = await interaction.original_response()
     view.message = msg
+
+
+@kimdedi_group.command(
+    name="siralama",
+    description="Bunu Kim Söyledi? en çok bilenler liderlik tablosunu gösterir",
+)
+async def kimdedi_siralama_command(interaction: discord.Interaction) -> None:
+    data_dir = config.get("memory", {}).get("data_dir", "/var/lib/discord-ai-memory")
+    from bot.trivia.game import get_trivia_leaderboard
+
+    board = await asyncio.to_thread(get_trivia_leaderboard, data_dir=data_dir, limit=10)
+    if not board:
+        await interaction.response.send_message(
+            "🏆 Henüz kaydedilmiş bir trivia skoru yok. İlk puanı kapmak için `/kimdedi oyna` başlat!",
+            ephemeral=True,
+        )
+        return
+
+    lines = ["**En Çok Doğru Tahmin Yapanlar:**\n"]
+    medals = ["🥇", "🥈", "🥉"] + [f"{i}." for i in range(4, 11)]
+    for idx, row in enumerate(board):
+        m = medals[idx] if idx < len(medals) else f"{idx+1}."
+        lines.append(f"{m} **{row['user_name']}**: {row['points']} Puan ({row['wins']} Galibiyet)")
+
+    embed = discord.Embed(
+        title="🏆 Bunu Kim Söyledi? - Liderlik Tablosu",
+        description="\n".join(lines),
+        color=0xFEE75C,
+    )
+    embed.set_footer(text="Her doğru tahmin +10 Racon Puanı kazandırır.")
+    await interaction.response.send_message(embed=embed)
+
+
+discord_bot.tree.add_command(kimdedi_group)
 
 
 @discord_bot.tree.command(name="taklit", description="Sunucudaki bir üyenin AI dijital ikizini konuşturur")
