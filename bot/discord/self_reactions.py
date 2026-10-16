@@ -1,4 +1,4 @@
-"""Account-controlled automatic reactions; no targeting of other accounts."""
+"""Owner-controlled automatic reactions for an explicitly configured account group."""
 from __future__ import annotations
 
 import asyncio
@@ -15,9 +15,11 @@ DEFAULT_REACTIONS = ("🇬", "🇦", "🇾", "🍆")
 
 
 class SelfReactions:
-    def __init__(self, data_dir: str, guild_ids=()):
+    def __init__(self, data_dir: str, guild_ids=(), controller_user_id=None, target_user_ids=()):
         self.path = Path(data_dir) / "self_reactions.json"
         self.guild_ids = {int(guild) for guild in guild_ids}
+        self.controller_user_id = int(controller_user_id) if controller_user_id else None
+        self.target_user_ids = {int(user_id) for user_id in target_user_ids}
         self.profiles = {}
         if self.path.exists():
             self.profiles = json.loads(self.path.read_text(encoding="utf-8"))
@@ -29,13 +31,18 @@ class SelfReactions:
     def key(guild_id: int, user_id: int) -> str:
         return f"{guild_id}:{user_id}"
 
-    def set_enabled(self, guild_id: int, user_id: int, enabled: bool):
-        updated = dict(self.profiles)
-        key = self.key(guild_id, user_id)
+    def set_enabled(self, guild_id: int, actor_id: int, enabled: bool):
+        if actor_id != self.controller_user_id:
+            raise PermissionError("Only the configured controller can change reactions")
+        if self.guild_ids and guild_id not in self.guild_ids:
+            raise ValueError("Reactions are not configured for this guild")
+        if not self.target_user_ids:
+            raise ValueError("No reaction accounts configured")
+        # Replace the guild's old self-service profiles as one atomic group.
+        updated = {key: value for key, value in self.profiles.items() if not key.startswith(f"{guild_id}:")}
         if enabled:
-            updated[key] = list(DEFAULT_REACTIONS)
-        else:
-            updated.pop(key, None)
+            for user_id in self.target_user_ids:
+                updated[self.key(guild_id, user_id)] = list(DEFAULT_REACTIONS)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temp = self.path.with_suffix(".tmp")
         temp.write_text(json.dumps(updated, ensure_ascii=False), encoding="utf-8")
@@ -46,6 +53,8 @@ class SelfReactions:
         if message.guild is None or message.author.bot:
             return
         if self.guild_ids and message.guild.id not in self.guild_ids:
+            return
+        if message.author.id not in self.target_user_ids:
             return
         key = self.key(message.guild.id, message.author.id)
         if key not in self.profiles:
@@ -74,16 +83,23 @@ class SelfReactions:
 
 def install_self_reactions(bot, config):
     memory = config.get("memory", {})
+    settings = config.get("automatic_reactions", {})
     service = SelfReactions(
         memory.get("data_dir", "/var/lib/discord-ai-memory"),
         memory.get("guild_ids", []),
+        settings.get("controller_user_id"),
+        settings.get("target_user_ids", []),
     )
     bot.add_listener(service.on_message, "on_message")
 
-    @bot.tree.command(name="tepkiler", description="Kendi mesajlarındaki otomatik tepki profilini aç veya kapat")
+    @bot.tree.command(name="tepkiler", description="Tanımlı hesapların otomatik tepkilerini aç veya kapat (yalnız bot sahibi)")
     @app_commands.guild_only()
-    @app_commands.describe(acik="Aç: 🇬 🇦 🇾 🍆 tepkilerini kendi yeni mesajlarına ekler. Kapat: durdurur.")
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.describe(acik="Aç: tanımlı hesaplara 🇬 🇦 🇾 🍆 eklenir. Kapat: durdurur.")
     async def self_reactions(interaction: discord.Interaction, acik: bool):
+        if interaction.user.id != service.controller_user_id:
+            await interaction.response.send_message("Bu komutu yalnızca Onur kullanabilir.", ephemeral=True)
+            return
         if interaction.guild is None:
             await interaction.response.send_message("Bu ayar yalnızca sunucuda kullanılabilir.", ephemeral=True)
             return
@@ -91,12 +107,15 @@ def install_self_reactions(bot, config):
             await interaction.response.send_message("Bu sunucuda tepki profilleri açık değil.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
+        if not service.target_user_ids:
+            await interaction.followup.send("Tepki uygulanacak hesaplar henüz yapılandırılmadı.", ephemeral=True)
+            return
         async with service.lock:
             await asyncio.to_thread(service.set_enabled, interaction.guild.id, interaction.user.id, acik)
         text = (
-            "Bu sunucuda kendi yeni mesajların için 🇬 🇦 🇾 🍆 tepkilerini açtın. "
+            f"Tanımlı {len(service.target_user_ids)} hesap için 🇬 🇦 🇾 🍆 tepkilerini açtın. "
             "Kapatmak için /tepkiler acik:False kullan."
-            if acik else "Kendi mesajlarındaki otomatik tepkileri kapattın."
+            if acik else "Tanımlı hesapların otomatik tepkilerini kapattın."
         )
         await interaction.followup.send(text, ephemeral=True)
 
