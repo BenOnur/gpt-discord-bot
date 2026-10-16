@@ -84,6 +84,6 @@ IMPERSONATE_USER_SCHEMA = {
 TOOL_NAME = "impersonate_user"
 TOOL_ENTRY = ToolEntry(
     schema=IMPERSONATE_USER_SCHEMA,
-    handler=impersonate_user,
-    requires_context=True,
+    fn=impersonate_user,
+    keywords=["taklit", "taklidini", "gibi konuş", "gibi yaz", "klon"],
 )
