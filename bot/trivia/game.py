@@ -231,6 +231,20 @@ class TriviaButton(discord.ui.Button):
         await view.handle_guess(interaction, self)
 
 
+class TriviaLeaderboardButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="Sıralama", emoji="🏆", style=discord.ButtonStyle.secondary, row=1)
+
+    async def callback(self, interaction: discord.Interaction):
+        import asyncio
+
+        await interaction.response.defer(ephemeral=True)
+        board = await asyncio.to_thread(get_trivia_leaderboard, data_dir=self.view.data_dir, limit=10)
+        lines = [f"{index}. **{row['user_name']}**: {row['points']} puan ({row['wins']} doğru)" for index, row in enumerate(board, 1)]
+        embed = discord.Embed(title="🏆 Kimdedi Sıralaması", description="\n".join(lines) or "Henüz kayıtlı skor yok.", color=0xFEE75C)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+
 class TriviaView(discord.ui.View):
     def __init__(
         self,
@@ -248,6 +262,7 @@ class TriviaView(discord.ui.View):
         # Add 4 choice buttons
         for idx, option_name in enumerate(trivia_data["options"]):
             self.add_item(TriviaButton(label=option_name, option_idx=idx))
+        self.add_item(TriviaLeaderboardButton())
 
     async def handle_guess(self, interaction: discord.Interaction, button: TriviaButton):
         if self.answered:
@@ -263,7 +278,7 @@ class TriviaView(discord.ui.View):
 
             # Disable all buttons
             for child in self.children:
-                if isinstance(child, discord.ui.Button):
+                if isinstance(child, TriviaButton):
                     child.disabled = True
 
             new_points = record_trivia_win(
@@ -278,7 +293,6 @@ class TriviaView(discord.ui.View):
             )
 
             await interaction.response.edit_message(embed=embed, view=self)
-            self.stop()
         else:
             # Wrong answer!
             button.style = discord.ButtonStyle.danger
@@ -303,7 +317,7 @@ class TriviaView(discord.ui.View):
             for child in self.children:
                 if isinstance(child, discord.ui.Button):
                     child.disabled = True
-                    if child.option_name == self.correct_name:
+                    if isinstance(child, TriviaButton) and child.option_name == self.correct_name:
                         child.style = discord.ButtonStyle.success
 
             embed = self.build_embed(
@@ -316,6 +330,13 @@ class TriviaView(discord.ui.View):
                     await self.message.edit(embed=embed, view=self)
                 except Exception as e:
                     logger.debug("Could not edit timed out trivia message: %s", e)
+        elif self.message:
+            for child in self.children:
+                child.disabled = True
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
 
     def build_embed(self, status: Optional[str] = None, revealed: bool = False) -> discord.Embed:
         embed = discord.Embed(
