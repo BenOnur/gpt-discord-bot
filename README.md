@@ -2,6 +2,20 @@
 
 Discord bot that connects to multiple LLM providers (OpenRouter, Ollama, Open WebUI, etc.), supports tools, personas, and scheduled tasks.
 
+### Natural-language server member and activity questions
+
+The chat bot can send a member's full-resolution profile avatar and answer
+questions such as when someone joined the server, what they are playing now,
+their last observed game, and the recent activity history collected by this bot.
+These actions are available from ordinary chat; slash commands are not required.
+
+Join dates need the `GUILD_MEMBERS` privileged Gateway Intent. Activity tracking
+also needs `GUILD_PRESENCES`. Enable both in the Discord Developer Portal and set
+`enable_members: true` plus `presence.enabled: true` in the bot configuration.
+Keep `presence.guild_ids` limited to the intended server. The SQLite tracker
+stores activity type/name and timestamps only, retains 30 days and at most 1,000
+records by default, and cannot reconstruct activity from before tracking began.
+
 ### Documentation
 
 | Document | Purpose |

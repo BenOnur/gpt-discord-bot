@@ -11,6 +11,13 @@ show_embed_color: false
 allow_dms: false
 enable_voice: true
 enable_message_content: false # Mention/reply chat works without privileged content access.
+enable_members: true # Required to resolve server member records and joined_at.
+presence:
+  enabled: true
+  guild_ids: [864872157565550633] # Track only the Discord server this bot was built for.
+  data_path: /var/lib/discord-ai-memory/rich_presence.sqlite3
+  retention_days: 30
+  max_records: 1000
 memory:
   enabled: false # Enable together with Discord's Message Content Intent.
   guild_ids: [] # Explicit server scope; no DMs.
@@ -76,6 +83,7 @@ models:
       - server_trivia
       - impersonate_user
       - send_profile_avatar
+      - get_member_info
     supports_tools: true
     max_tokens: 2048
   groq/openai/gpt-oss-120b:
@@ -103,6 +111,7 @@ models:
       - server_trivia
       - impersonate_user
       - send_profile_avatar
+      - get_member_info
     supports_tools: true
     max_tokens: 2048
 # Both models passed a live completion probe on the deployment account.

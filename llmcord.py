@@ -25,6 +25,7 @@ from bot.config.loader import get_config as load_config_with_validation
 from bot.config.personas import try_load_persona, list_personas
 from bot.config.tasks import load_scheduled_tasks
 from bot.memory import DiscordMemory
+from bot.llm.tools.member_info import PresenceTracker
 from bot.discord.errors import notify_admin_error as core_notify_admin_error, handle_app_command_error
 from bot.llm.errors import parse_error_message
 from bot.llm.ollama_service import OllamaService
@@ -78,6 +79,7 @@ def build_extra_body(provider_cfg: dict, model_params: Any, exclude: set[str] | 
 
 config = get_config()
 memory = DiscordMemory(config)
+presence_tracker = PresenceTracker(config)
 curr_model = next(iter(config["models"]))
 # Detect initial persona: model-specific > global
 model_params = config["models"].get(curr_model, {})
@@ -94,6 +96,8 @@ intents = discord.Intents.default()
 intents.message_content = config.get("enable_message_content", True)
 intents.dm_messages = True
 intents.voice_states = config.get("enable_voice", True)
+intents.members = bool(config.get("enable_members", False))
+intents.presences = presence_tracker.enabled
 activity = discord.CustomActivity(name=(config.get("status_message") or "github.com/jakobdylanc/llmcord")[:128])
 discord_bot = commands.Bot(intents=intents, activity=activity, command_prefix=None)
 httpx_client = httpx.AsyncClient()
@@ -722,6 +726,14 @@ async def taklit_command(
 @discord_bot.event
 async def on_ready() -> None:
     memory.start(discord_bot)
+    if presence_tracker.enabled:
+        # Discord includes available presence state in guild startup payloads
+        # when the privileged presence/member intents are enabled.
+        for guild in discord_bot.guilds:
+            if presence_tracker.tracks(guild.id):
+                for member in guild.members:
+                    presence_tracker.observe(member)
+        logging.info("Rich Presence tracking enabled for configured guilds")
     if client_id := config.get("client_id"):
         logging.info(f"\n\nBOT INVITE URL:\nhttps://discord.com/oauth2/authorize?client_id={client_id}&permissions=412317191168&scope=bot\n")
     # Load voice cog BEFORE syncing commands so its commands are included
@@ -756,6 +768,12 @@ async def on_ready() -> None:
         await start_ipc_server(discord_bot)
     except Exception as e:
         logging.warning("Failed to start IPC server: %s", e)
+
+
+@discord_bot.event
+async def on_presence_update(before: discord.Member, after: discord.Member) -> None:
+    """Keep a compact history of activity transitions for configured guilds."""
+    presence_tracker.observe(after)
 
 
 @discord_bot.event
@@ -886,6 +904,7 @@ async def on_message(new_msg: discord.Message) -> None:
         "author": new_msg.author,
         "scheduler": scheduler,
         "config": config,
+        "presence_tracker": presence_tracker,
     })
 
     clean_prompt = re.sub(r"<@!?[0-9]+>", "", new_msg.content).strip().lower()
@@ -902,10 +921,33 @@ async def on_message(new_msg: discord.Message) -> None:
                 "guild": new_msg.guild,
                 "author": new_msg.author,
                 "config": config,
+                "presence_tracker": presence_tracker,
             })
             return
         except Exception as exc:
             logging.error("Natural-language profile avatar action failed: %s", exc, exc_info=True)
+
+    from bot.llm.tools.member_info import member_info_request, _async_get_member_info
+    member_info_intent = member_info_request(clean_prompt)
+    if member_info_intent:
+        try:
+            response = await _async_get_member_info("", member_info_intent, {
+                "bot": discord_bot,
+                "message": new_msg,
+                "channel": new_msg.channel,
+                "guild": new_msg.guild,
+                "author": new_msg.author,
+                "config": config,
+                "presence_tracker": presence_tracker,
+            })
+            await new_msg.channel.send(
+                response,
+                reference=new_msg.to_reference(fail_if_not_exists=False),
+                mention_author=False,
+            )
+            return
+        except Exception as exc:
+            logging.error("Natural-language member info action failed: %s", exc, exc_info=True)
 
     # Fast-path for quote request:
     # 1) When replying to another message with "@bot quote yap", "alıntıla", "/quote", "!quote"

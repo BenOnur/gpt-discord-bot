@@ -12,6 +12,17 @@ use_plain_responses: false
 show_embed_color: true  # Show green/orange bar on bot responses (set to false to disable)
 allow_dms: true
 
+# Optional Discord activity history. Both privileged Gateway Intents must also
+# be enabled in the Discord Developer Portal. This stores activity name/type and
+# timestamps only; retention and row limits keep the local SQLite file small.
+enable_members: false
+presence:
+  enabled: false
+  guild_ids: []
+  data_path: /var/lib/discord-ai-presence/rich_presence.sqlite3
+  retention_days: 30
+  max_records: 1000
+
 permissions:
   users:
     admin_ids: []
