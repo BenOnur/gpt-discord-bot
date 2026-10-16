@@ -295,7 +295,7 @@ class TriviaView(discord.ui.View):
                     if isinstance(child, TriviaButton):
                         child.disabled = True
                 embed = self.build_embed(
-                    status=f"🎉 **TEBRİKLER!** Doğru cevap! (+10 Puan, Toplam: **{new_points}**)",
+                    status=f"🎉 **Tebrikler, {interaction.user.display_name}!** Doğru bildin. +10 puan · Toplam: **{new_points}**",
                     revealed=True,
                 )
             else:
@@ -311,7 +311,7 @@ class TriviaView(discord.ui.View):
             if self.answered:
                 # Footer/author text is not mention-aware. Native message
                 # content lets Discord resolve the member name/profile/style.
-                edit_kwargs["content"] = f"🎉 **Tebrikler** {interaction.user.mention}, doğru bildin!"
+                edit_kwargs["content"] = f"🎉 **Tebrikler, {interaction.user.mention}!** Doğru bildin. **+10 puan · Toplam: {new_points}**"
                 edit_kwargs["allowed_mentions"] = discord.AllowedMentions.none()
             await message.edit(**edit_kwargs)
 

@@ -48,7 +48,7 @@ class TriviaSyncTests(unittest.IsolatedAsyncioTestCase):
             release.set()
             await asyncio.gather(*tasks)
             award.assert_called_once_with(2, "Player 2", view.data_dir)
-        self.assertIn("TEBR", published[-1]["footer"]["text"])
+        self.assertIn("Player 2", published[-1]["footer"]["text"])
         self.assertTrue(published[-1].get("fields"))
         self.assertTrue(view.answered)
         self.assertTrue(all(button.disabled for button in view.children if isinstance(button, TriviaButton)))
@@ -64,6 +64,8 @@ class TriviaSyncTests(unittest.IsolatedAsyncioTestCase):
         winning_edit = view.message.edit.await_args.kwargs
         self.assertIn("<@1>", winning_edit["content"])
         self.assertNotIn("<@", winning_edit["embed"].footer.text)
+        self.assertIn("Tebrikler, Player 1!", winning_edit["embed"].footer.text)
+        self.assertIn("Toplam: 10", winning_edit["content"])
         self.assertFalse(winning_edit["allowed_mentions"].users)
         second.followup.send.assert_awaited_once()
 
