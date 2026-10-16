@@ -98,9 +98,9 @@ class ReactionPanel(discord.ui.View):
         self.refresh_controls()
 
     async def interaction_check(self, interaction):
-        if (interaction.user.id != self.owner_id or interaction.user.id != self.service.controller_user_id
+        if (interaction.user.id != self.owner_id or interaction.user.id not in self.service.controller_user_ids
                 or interaction.guild_id != self.guild.id):
-            await interaction.response.send_message("Bu paneli yalnızca Onur kullanabilir.", ephemeral=True)
+            await interaction.response.send_message("Bu paneli yalnızca açan yetkili kişi kullanabilir.", ephemeral=True)
             return False
         return True
 

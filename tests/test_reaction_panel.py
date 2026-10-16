@@ -78,12 +78,37 @@ class ReactionPanelTests(unittest.IsolatedAsyncioTestCase):
         await self.panel.remove_profile.callback(self.interaction())
         self.assertNotIn("1:7", self.service.profiles)
 
+    async def test_additional_managers_have_individual_panels_and_storage_access(self):
+        service = SelfReactions(self.temp.name, [1], 99, [2], [100, 101])
+        self.assertEqual(service.controller_user_ids, {99, 100, 101})
+        for actor in (99, 100, 101):
+            service.set_profile(1, actor, 7, ["🔥"], True)
+            service.delete_profile(1, actor, 7)
+        with self.assertRaises(PermissionError):
+            service.set_profile(1, 102, 7, ["🔥"], True)
+        with self.assertRaises(ValueError):
+            service.set_profile(2, 100, 7, ["🔥"], True)
+        panel = ReactionPanel(service, self.guild, 100)
+        self.addCleanup(panel.stop)
+        self.assertTrue(await panel.interaction_check(self.interaction(100)))
+        self.assertFalse(await panel.interaction_check(self.interaction(99)))
+        modal = ReactionEmojiModal(panel)
+        self.addCleanup(modal.stop)
+        self.assertFalse(await modal.interaction_check(self.interaction(101)))
+
     async def test_command_opens_ephemeral_panel_and_rejects_other_admins(self):
         bot = commands.Bot(command_prefix="!", intents=discord.Intents.none())
         self.addAsyncCleanup(bot.close)
         install_self_reactions(bot, {"memory": {"data_dir": self.temp.name, "guild_ids": [1]},
-                                     "automatic_reactions": {"controller_user_id": 99}})
+                                     "automatic_reactions": {"controller_user_id": 99, "controller_user_ids": [100, 101]}})
         command = bot.tree.get_command("tepkiler")
+        self.assertIsNone(command.default_permissions)
+        for actor in (100, 101):
+            manager = self.interaction(actor)
+            manager.original_response = AsyncMock()
+            await command.callback(manager)
+            self.assertTrue(manager.response.send_message.await_args.kwargs["ephemeral"])
+            manager.response.send_message.await_args.kwargs["view"].stop()
         owner = self.interaction()
         owner.original_response = AsyncMock()
         await command.callback(owner)

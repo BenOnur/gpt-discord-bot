@@ -18,11 +18,12 @@ records by default, and cannot reconstruct activity from before tracking began.
 
 ### Documentation
 
-The owner-only `/tepkiler` command opens a private reaction management panel.
+The authorized-users-only `/tepkiler` command opens a private reaction management panel.
 Select a server member, edit up to eight Unicode or server custom emojis, then
 save and enable, pause, or delete that member's automatic reactions. Settings
 persist on the VDS. The command, panel and modal are restricted to
-`automatic_reactions.controller_user_id`; `memory.guild_ids` limits server scope.
+`automatic_reactions.controller_user_id` plus `automatic_reactions.controller_user_ids`;
+`memory.guild_ids` limits server scope. Every panel is restricted to its invoker.
 
 | Document | Purpose |
 |---------|---------|

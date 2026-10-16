@@ -15,10 +15,13 @@ DEFAULT_REACTIONS = ("🇬", "🇦", "🇾", "🍆")
 
 
 class SelfReactions:
-    def __init__(self, data_dir: str, guild_ids=(), controller_user_id=None, target_user_ids=()):
+    def __init__(self, data_dir: str, guild_ids=(), controller_user_id=None, target_user_ids=(), controller_user_ids=()):
         self.path = Path(data_dir) / "self_reactions.json"
         self.guild_ids = {int(guild) for guild in guild_ids}
         self.controller_user_id = int(controller_user_id) if controller_user_id else None
+        self.controller_user_ids = {int(user_id) for user_id in controller_user_ids}
+        if self.controller_user_id:
+            self.controller_user_ids.add(self.controller_user_id)
         self.target_user_ids = {int(user_id) for user_id in target_user_ids}
         self.profiles = {}
         self.revision = 0
@@ -44,7 +47,7 @@ class SelfReactions:
         return f"{guild_id}:{user_id}"
 
     def check_controller(self, guild_id: int, actor_id: int):
-        if actor_id != self.controller_user_id:
+        if actor_id not in self.controller_user_ids:
             raise PermissionError("Only the configured controller can change reactions")
         if self.guild_ids and guild_id not in self.guild_ids:
             raise ValueError("Reactions are not configured for this guild")
@@ -124,15 +127,15 @@ def install_self_reactions(bot, config):
         memory.get("guild_ids", []),
         settings.get("controller_user_id"),
         settings.get("target_user_ids", []),
+        settings.get("controller_user_ids", []),
     )
     bot.add_listener(service.on_message, "on_message")
 
-    @bot.tree.command(name="tepkiler", description="Kullanıcıların otomatik emoji tepkilerini özel panelden yönet (yalnız Onur)")
+    @bot.tree.command(name="tepkiler", description="Kullanıcıların otomatik emoji tepkilerini özel panelden yönet")
     @app_commands.guild_only()
-    @app_commands.default_permissions(administrator=True)
     async def self_reactions(interaction: discord.Interaction):
-        if interaction.user.id != service.controller_user_id:
-            await interaction.response.send_message("Bu komutu yalnızca Onur kullanabilir.", ephemeral=True)
+        if interaction.user.id not in service.controller_user_ids:
+            await interaction.response.send_message("Bu komut için yetkin yok.", ephemeral=True)
             return
         if interaction.guild is None:
             await interaction.response.send_message("Bu ayar yalnızca sunucuda kullanılabilir.", ephemeral=True)
