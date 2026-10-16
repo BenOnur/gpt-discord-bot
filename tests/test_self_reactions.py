@@ -38,25 +38,50 @@ class SelfReactionTests(unittest.IsolatedAsyncioTestCase):
         self.service.set_enabled(1, 99, False)
         await self.service.worker
         message.add_reaction.assert_not_awaited()
-        self.assertNotIn("1:2", SelfReactions(self.temp.name).profiles)
+        self.assertFalse(SelfReactions(self.temp.name).profiles["1:2"]["enabled"])
 
     async def test_only_controller_can_toggle_all_configured_accounts(self):
         for actor_id in (2, 3, 4):
             with self.assertRaises(PermissionError):
                 self.service.set_enabled(1, actor_id, True)
-        self.assertEqual(self.service.profiles, {})
+        self.assertFalse(any(profile["enabled"] for profile in self.service.profiles.values()))
         self.service.set_enabled(1, 99, True)
         self.assertEqual(set(self.service.profiles), {"1:2", "1:4"})
         with self.assertRaises(PermissionError):
             self.service.set_enabled(1, 2, False)
         self.service.set_enabled(1, 99, False)
-        self.assertEqual(self.service.profiles, {})
+        self.assertFalse(any(profile["enabled"] for profile in self.service.profiles.values()))
 
-    async def test_legacy_self_profile_for_other_account_is_ignored_and_removed(self):
-        self.service.profiles["1:3"] = list(DEFAULT_REACTIONS)
+    async def test_legacy_self_profile_for_other_account_is_not_migrated(self):
+        import json
+        self.service.path.write_text(json.dumps({"1:3": list(DEFAULT_REACTIONS), "1:2": list(DEFAULT_REACTIONS)}))
+        self.service = SelfReactions(self.temp.name, [1], 99, [2, 4])
         other = self.message(user_id=3)
         await self.service.on_message(other)
         other.add_reaction.assert_not_awaited()
         self.assertIsNone(self.service.worker)
         self.service.set_enabled(1, 99, True)
         self.assertNotIn("1:3", self.service.profiles)
+
+    async def test_individual_custom_profiles_remain_independent_and_persist(self):
+        self.service.set_profile(1, 99, 3, ["😂", "🔥"], True)
+        self.service.set_profile(1, 99, 5, ["⭐"], True)
+        self.service.set_profile(1, 99, 3, ["😂", "🔥"], False)
+        self.assertTrue(self.service.profiles["1:5"]["enabled"])
+        reloaded = SelfReactions(self.temp.name, [1], 99, [])
+        self.assertEqual(reloaded.profiles["1:3"]["emojis"], ["😂", "🔥"])
+        self.assertFalse(reloaded.profiles["1:3"]["enabled"])
+        active = self.message(user_id=5)
+        await reloaded.on_message(active)
+        await reloaded.worker
+        active.add_reaction.assert_awaited_once_with("⭐")
+        reloaded.delete_profile(1, 99, 5)
+        self.assertNotIn("1:5", SelfReactions(self.temp.name).profiles)
+
+    async def test_edited_profile_invalidates_already_queued_reactions(self):
+        self.service.set_profile(1, 99, 3, ["😂"], True)
+        old_message = self.message(user_id=3)
+        await self.service.on_message(old_message)
+        self.service.set_profile(1, 99, 3, ["🔥"], True)
+        await self.service.worker
+        old_message.add_reaction.assert_not_awaited()
