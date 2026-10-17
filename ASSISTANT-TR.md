@@ -28,8 +28,10 @@ Herkese açık kanalda kaydedilen kişisel tercih, aynı kişinin diğer uygun
 kanallardaki sorularına bağlanabilir. Özel kanal bilgisi dışarı taşınmaz.
 
 Skill'ler çalıştırılabilir kod değildir. Mevcut izinli araçlara ilişkin metinsel
-prosedürlerdir. Aynı kişinin aynı kanalda iki farklı isteğinde başarılı görünen
-araç dizisi tekrarlandığında otomatik skill üretilir. Bu bir sezgiseldir;
+prosedürlerdir. Aynı kanalda iki farklı istekte başarılı görünen araç dizisi
+tekrarlandığında otomatik skill üretilir. Herkese açık kanalda üyeler birlikte
+bu sayaca katkı verir; yalnız genel araç sırası ortak skill'e dönüşür, kişisel
+istek metni/argümanları kopyalanmaz. Özel kanalda kişisel kalır. Bu bir sezgiseldir;
 gerçek dışı başarı veya yanlış prosedür görülürse ilgili kayıt düzeltilebilir
 veya etkin hafızadan çıkarılabilir. Eski argümanlar yeni göreve kopyalanmaz.
 Model yalnız o istek için sunulan araçları çağırabilir.

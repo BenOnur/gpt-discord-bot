@@ -87,6 +87,13 @@ class AssistantMemoryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.memory.save(context(),"fact","key gsk_"+"x"*30)
 
+    def test_public_workflow_can_learn_across_members_without_copying_prompt(self):
+        self.memory.learn_workflow(context(11,mid=1),["read_url","web_search"],"private preference in request")
+        self.memory.learn_workflow(context(12,mid=2),["read_url","web_search"],"another request")
+        rows=self.memory.entries(context(13))
+        self.assertEqual(rows[0]["owner"],0)
+        self.assertNotIn("private preference",rows[0]["body"])
+
 
 class ArchiveScopeTests(unittest.TestCase):
     def test_all_queries_scoped_and_private_does_not_flow_to_public(self):

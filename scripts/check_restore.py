@@ -23,7 +23,8 @@ def check_restore(path, keyfile=None):
         with tarfile.open(path, "r:gz") as archive:
             archive.extractall(folder, filter="data")
         results = {}
-        for database in Path(folder).rglob("*.sqlite3"):
+        databases = list(Path(folder).rglob("*.sqlite3")) + list(Path(folder).rglob("*.db"))
+        for database in databases:
             with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as db:
                 result = db.execute("PRAGMA quick_check").fetchone()[0]
                 if result != "ok":

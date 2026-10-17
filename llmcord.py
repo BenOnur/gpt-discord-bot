@@ -1331,7 +1331,10 @@ async def on_message(new_msg: discord.Message) -> None:
     # Build API messages (skip server memory recall in DMs)
     if not is_dm:
         try:
-            recalled = await asyncio.wait_for(memory.recall(new_msg), timeout=20)
+            from bot.assistant_memory import normalize
+            needs_long_memory = any(term in normalize(new_msg.content) for term in (
+                "hatir", "gecmis", "neydi", "onceden", "gecen", "profil", "tercih", "sever", "seviyor", "arsiv", "benim", "bizim", "ne konus", "kim soyle"))
+            recalled = await asyncio.wait_for(memory.recall(new_msg, include_notes=needs_long_memory), timeout=config.get("memory", {}).get("recall_timeout_seconds", 8))
             sys_prompt += recalled[:3500] + ("\n</discord_memory>" if len(recalled) > 3500 else "")
         except Exception as exc:
             logging.warning("Memory recall unavailable (%s)", type(exc).__name__)
@@ -1342,6 +1345,7 @@ async def on_message(new_msg: discord.Message) -> None:
         sys_prompt += ("\nÖnce kullanıcının görevini çöz. Bilgi/araştırma/hafıza/etkinlik isteklerinde ilgili aracı kullanmadan "
                        "erişemediğini iddia etme. Normal görevde küfür etme; eski arşivdeki şakalaşma güncel isteğin tonunu belirlemez. "
                        "Etkinlik sorgusu için get_member_info; açık kayıt/düzeltme/skill isteği için manage_memory kullan. "
+                       "Kullanıcı kendi tercihine açık bir düzeltme yaptığında bunu kişisel kural olarak kaydet; ortak kural için yönetici yetkisi gerekir. "
                        "Öğrenme model eğitimi değil, kaynaklı not ve prosedürlerin kalıcı güncellenmesidir.")
     api_messages = []
     for m in messages[::-1]:

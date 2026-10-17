@@ -84,11 +84,11 @@ class AssistantMemory:
             raise ValueError("Kalıcı sunucu hafızası için sunucu içindeki bir mesaj gerekli.")
         return int(guild.id), int(channel.id), int(author.id)
 
-    def save(self, ctx, kind, body, title="", shared=False):
+    def save(self, ctx, kind, body, title="", shared=False, _system_derived=False):
         guild, channel, actor = self.scope(ctx)
         if kind not in ("rule", "fact", "skill"):
             raise ValueError("Kayıt türü rule, fact veya skill olmalı.")
-        if shared and not self.is_admin(actor):
+        if shared and not self.is_admin(actor) and not (_system_derived and kind == "skill"):
             raise PermissionError("Ortak kuralları ve skill'leri yalnız bot yöneticisi değiştirebilir; kişisel kayıt oluşturabilirsin.")
         body = body.strip()
         if not 3 <= len(body) <= 2400:
@@ -179,7 +179,13 @@ class AssistantMemory:
         if not tools or len(tools) > 8:
             return
         guild, channel, actor = self.scope(ctx)
-        signature = hashlib.sha256(json.dumps([guild, channel, actor, tools]).encode()).hexdigest()
+        try:
+            public = ctx["channel"].permissions_for(ctx["guild"].default_role)
+            shared = public.view_channel and public.read_message_history
+        except AttributeError:
+            shared = False
+        owner = 0 if shared else actor
+        signature = hashlib.sha256(json.dumps([guild, channel, owner, tools]).encode()).hexdigest()
         message_id = int(ctx["message"].id)
         with self.connect() as db:
             row = db.execute("SELECT * FROM workflows WHERE signature=?", (signature,)).fetchone()
@@ -190,13 +196,13 @@ class AssistantMemory:
             successes = (row["successes"] if row else 0) + 1
             entry_id = row["entry_id"] if row else None
             db.execute("INSERT OR REPLACE INTO workflows VALUES(?,?,?,?,?,?,?,?)",
-                       (signature, guild, channel, actor, json.dumps(tools), json.dumps(examples), successes, entry_id))
+                       (signature, guild, channel, owner, json.dumps(tools), json.dumps(examples), successes, entry_id))
         if successes >= 2 and not entry_id:
-            body = (f"Tekrarlanan başarılı iş örneği: {re.sub(r'<@!?\d+>', '', prompt).strip()[:200]}. "
-                    f"Benzer bir görevde mevcut araç sırası: {' → '.join(tools)}. "
+            example = "Ortak kanalda tekrarlanan başarılı araç akışı" if shared else f"Tekrarlanan başarılı iş örneği: {re.sub(r'<@!?\d+>', '', prompt).strip()[:200]}"
+            body = (f"{example}. Benzer bir görevde mevcut araç sırası: {' → '.join(tools)}. "
                     "Hedef kişi, tarih ve diğer parametreleri yeni istekten al. Eski parametreleri kopyalama. "
                     "İzinleri kontrol et; gereksiz yan etki oluşturma. Sonucu araç çıktısıyla doğrula.")
-            entry_id = self.save(ctx, "skill", body, title="Öğrenilmiş prosedür: " + " → ".join(tools))
+            entry_id = self.save(ctx, "skill", body, title="Öğrenilmiş prosedür: " + " → ".join(tools), shared=shared, _system_derived=True)
             with self.connect() as db:
                 db.execute("UPDATE workflows SET entry_id=? WHERE signature=?", (entry_id, signature))
 

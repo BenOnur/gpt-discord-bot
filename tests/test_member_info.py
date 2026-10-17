@@ -77,6 +77,27 @@ class PresenceStoreTests(unittest.TestCase):
     def test_member_info_tool_is_auto_discovered(self):
         self.assertIn("get_member_info", build_tool_registry())
 
+    def test_spotify_song_and_link_are_read_from_live_activity(self):
+        import asyncio
+        import discord
+        from bot.llm.tools.member_info import _async_get_member_info
+        activity=discord.Spotify(state="Artist",details="Song",sync_id="track123",session_id="test-session",assets={"large_text":"Album"},timestamps={"start":1000,"end":10000})
+        member=SimpleNamespace(id=2,name="listener",display_name="Listener",joined_at=None,activities=[activity])
+        guild=SimpleNamespace(get_member=lambda _:member,members=[member])
+        ctx={"guild":guild,"author":member,"message":SimpleNamespace(mentions=[],content="what am I listening to")}
+        answer=asyncio.run(_async_get_member_info("","current_music",ctx))
+        self.assertIn("Song",answer)
+        self.assertIn("Artist",answer)
+        self.assertIn("https://open.spotify.com/track/track123",answer)
+
+    def test_unavailable_music_explained_without_banter(self):
+        import asyncio
+        from bot.llm.tools.member_info import _async_get_member_info
+        member=SimpleNamespace(id=2,name="listener",display_name="Listener",joined_at=None,activities=[])
+        guild=SimpleNamespace(get_member=lambda _:member,members=[member])
+        answer=asyncio.run(_async_get_member_info("","current_music",{"guild":guild,"author":member}))
+        self.assertIn("kapalı",answer)
+
 
 if __name__ == "__main__":
     unittest.main()
