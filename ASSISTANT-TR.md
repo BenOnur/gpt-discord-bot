@@ -103,3 +103,20 @@ Yeni yedek göndermeden geri yükleme provası:
 Prova ayrı geçici dizine çıkarır; canlı veriyi değiştirmez. SQLite quick_check
 doğrular, gerçek kullanıcı senaryolarının tümünü veya çoklu DB atomikliğini
 garanti etmez. Açık prosedürler otomatik kod yükseltme/deploy yetkisi vermez.
+
+## ChatGPT abonelik bağlantısı (isteğe bağlı)
+
+`scripts/chatgpt_plan_login.py --credentials /var/lib/discord-ai-memory/auth/chatgpt.json`
+resmî Sign in with ChatGPT akışını başlatır. VDS loopback callback portu 1456 için
+giriş sırasında SSH tüneli gerekir; sonrasında PC bağlantısı gerekmez. Ayrı giriş
+kimliği/host ve 0600 token dosyası kullanılır, Hermes tokenları kopyalanmaz.
+Abonelik erişimi ancak başarılı gerçek istekle doğrulanmış sayılır.
+
+Provider ayarı: `transport: chatgpt_plan`, `base_url: https://api.openai.com/v1`,
+`credentials_path` yukarıdaki dosya; `allowed_guild_ids` yalnız yetkili sunucular.
+Discord dışı arka plan işleri bu hesaptan otomatik harcama yapmaz.
+Bu adaptör yalnız `gpt-6-luna`, `reasoning.effort: low` kullanır; abonelik yolunda
+başka modele otomatik geçilmez. Mevcut bot araçları Responses function çağrılarına
+çevrilir; hafıza/kişilik Discord'a özel kalır. Kota ortak hesaptan tüketilir.
+
+Kaynak: https://developers.openai.com/siwc/token-sharing-open-source/sign-in

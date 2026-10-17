@@ -21,3 +21,4 @@ gTTS>=2.5.4
 pillow>=11.0.0
 emoji>=2.14,<3
 cryptography>=46
+PyJWT[crypto]>=2.10,<3

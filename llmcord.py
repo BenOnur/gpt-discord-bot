@@ -70,6 +70,9 @@ def format_system_prompt(prompt: str, accept_usernames: bool) -> str:
 
 
 def build_openai_client(provider_cfg: dict) -> AsyncOpenAI:
+    if provider_cfg.get("transport") == "chatgpt_plan":
+        from bot.llm.chatgpt_plan import ChatGPTPlanClient
+        return ChatGPTPlanClient(provider_cfg)
     return AsyncOpenAI(base_url=provider_cfg["base_url"], api_key=provider_cfg.get("api_key", "sk-no-key-required"), max_retries=0)
 
 
@@ -1495,6 +1498,8 @@ async def on_message(new_msg: discord.Message) -> None:
     model_fallbacks = (model_params or {}).get("fallback_models", []) if isinstance(model_params, dict) else []
     global_fallbacks = config.get("fallback_models", []) or []
     all_models = list(dict.fromkeys([provider_slash_model] + (model_fallbacks or []) + global_fallbacks))
+    if provider_cfg.get("transport") == "chatgpt_plan":
+        all_models = [provider_slash_model]  # Explicit plan model: no silent substitution.
 
     # ── Try each model in order ─────────────────────────────────────────────
 
