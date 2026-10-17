@@ -18,6 +18,47 @@ from bot.storage import ClosingConnection
 logger = logging.getLogger(__name__)
 
 
+def live_activity_snapshot(member) -> list[dict[str, Any]]:
+    """Visible gateway cache only. Never merge historical music into current state."""
+    result = []
+    now = datetime.now(timezone.utc)
+    for activity in getattr(member, "activities", ()):
+        kind = int(getattr(activity, "type", 0))
+        if kind == int(discord.ActivityType.custom):
+            continue
+        if isinstance(activity, discord.Spotify):
+            end = getattr(activity, "end", None)
+            if end and end < now - timedelta(seconds=30):
+                continue
+            result.append({"app": "Spotify", "type": kind, "details": activity.title,
+                           "state": ", ".join(activity.artists), "source": activity.track_url})
+        else:
+            result.append({"app": str(getattr(activity, "name", "") or "")[:100], "type": kind,
+                           "details": str(getattr(activity, "details", "") or "")[:300],
+                           "state": str(getattr(activity, "state", "") or "")[:300]})
+    return result
+
+
+def current_music_report(member) -> tuple[str, str | None]:
+    activities = live_activity_snapshot(member)
+    # Third-party music apps may publish Playing, Listening, or Watching.
+    candidates = [a for a in activities if a["details"] or a["state"] or a["type"] == 2]
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    header = f"{member.display_name}: Discord tarafından paylaşılan canlı etkinlik (sorgu: {stamp}). "
+    if not candidates:
+        return header + "Şarkı adı/sanatçı ayrıntısı görünmüyor. Geçmiş kayıtlar şu an dinlediğin şarkıyı kanıtlamaz.", None
+    lines = [f"Uygulama: {a['app']}; details: {a['details'] or 'yok'}; state: {a['state'] or 'yok'}" +
+             (f"; Kaynak: {a['source']}" if a.get("source") else "") for a in candidates]
+    report = header + "\n" + "\n".join(lines)
+    if len(candidates) != 1:
+        return report + "\nBirden fazla etkinlik var; hangisinin duyduğun müzik olduğunu kesinleştiremiyorum. Uygulamayı belirt.", None
+    item = candidates[0]
+    if item["app"] != "Spotify" and item["type"] != 2:
+        report += "\nUygulama müzik dinleme türünde bildirilmemiş. Bu alanları araştırabilirim; şarkı adı/sanatçı eşlemesi kesin değildir."
+    query = " ".join([item["details"], item["state"]]).strip()
+    return report, query or None
+
+
 def _clean_name(value: str) -> str:
     value = unicodedata.normalize("NFKD", value.casefold()).replace("ı", "i")
     value = "".join(c for c in value if not unicodedata.combining(c))
@@ -244,7 +285,10 @@ async def _async_get_member_info(target: str | None, include: str, ctx: dict[str
         return error
     if member is None:
         return "Sorgulanacak sunucu üyesini bulamadım."
-    if guild.get_member(member.id) is None:
+    cached_member = guild.get_member(member.id)
+    if cached_member is not None:
+        member = cached_member
+    else:
         try:
             member = await guild.fetch_member(member.id)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
@@ -258,14 +302,9 @@ async def _async_get_member_info(target: str | None, include: str, ctx: dict[str
 
     activities = PresenceStore._activities(getattr(member, "activities", ()))
     if include in ("current_music", "music_research"):
-        for activity in getattr(member, "activities", ()):
-            if isinstance(activity, discord.Spotify):
-                return (f"{member.display_name} şu an Spotify'da {activity.title} — {', '.join(activity.artists)} dinliyor. "
-                        f"Albüm: {activity.album}. Kaynak: {activity.track_url}")
-        tracker = ctx.get("presence_tracker")
-        if not tracker or not tracker.enabled:
-            return "Etkinlik takibi şu an kapalı; Discord'da dinlediğin şarkıya erişemiyorum. İzin açılınca paylaşılan Spotify etkinliğini okuyabilirim."
-        return f"{member.display_name} için Discord'da paylaşılan güncel Spotify parçası görünmüyor. Etkinlik paylaşımını kontrol edebilir veya şarkının adını/linkini gönderebilirsin."
+        report, query = current_music_report(member)
+        ctx["music_query"] = query
+        return report
     current = list(activities.values())
     tracker: PresenceTracker | None = ctx.get("presence_tracker")
     records = []
@@ -288,7 +327,8 @@ async def _async_get_member_info(target: str | None, include: str, ctx: dict[str
     if include == "joined_at":
         return f"{member.display_name} sunucuya {joined} katılmış."
     if include == "current_activity":
-        return f"{member.display_name} şu an: " + (", ".join(label(*item) for item in current) if current else "Discord’da görünür bir etkinlik paylaşmıyor.")
+        import json
+        return f"{member.display_name} canlı Discord etkinlikleri (geçmiş değil): " + json.dumps(live_activity_snapshot(member), ensure_ascii=False)
     if include == "last_game":
         current_games = [(t, n) for t, n in current if t == int(discord.ActivityType.playing)]
         if current_games:
@@ -329,12 +369,12 @@ MEMBER_INFO_SCHEMA = {
     "type": "function",
     "function": {
         "name": "get_member_info",
-        "description": "Read a Discord member's visible live Spotify song (current_music), join date, current activity, last game or observed activity history. For what I am listening to, use current_music with empty target (requesting user), then web_search the returned song/artist if research is requested. Never invent activity. Resolve a tagged member or exact name.",
+        "description": "Read a Discord member's visible live Rich Presence from any app: app name, details, state; Spotify song where available, join date, current activity, last game or observed history. For current listening use current_music with empty target (requesting user). Never substitute history for current state, invent a song, or silently choose between multiple apps. Non-listening app fields may not be a song. Resolve a tagged member or exact name.",
         "parameters": {
             "type": "object",
             "properties": {
                 "target": {"type": "string", "description": "Member username, server display name, user ID, or omit when one person is tagged or the question is about the message author."},
-                "include": {"type": "string", "enum": ["summary", "joined_at", "current_activity", "current_music", "last_game", "activity_history"], "description": "Select join date, current activity, live Spotify song, last game or observed history."},
+                "include": {"type": "string", "enum": ["summary", "joined_at", "current_activity", "current_music", "last_game", "activity_history"], "description": "Select join date, current activity details from all visible apps, current music, last game or observed history."},
             },
         },
     },

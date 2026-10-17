@@ -81,7 +81,9 @@ class PresenceStoreTests(unittest.TestCase):
         import asyncio
         import discord
         from bot.llm.tools.member_info import _async_get_member_info
-        activity=discord.Spotify(state="Artist",details="Song",sync_id="track123",session_id="test-session",assets={"large_text":"Album"},timestamps={"start":1000,"end":10000})
+        import time
+        now_ms = int(time.time() * 1000)
+        activity=discord.Spotify(state="Artist",details="Song",sync_id="track123",session_id="test-session",assets={"large_text":"Album"},timestamps={"start":now_ms-1000,"end":now_ms+180000})
         member=SimpleNamespace(id=2,name="listener",display_name="Listener",joined_at=None,activities=[activity])
         guild=SimpleNamespace(get_member=lambda _:member,members=[member])
         ctx={"guild":guild,"author":member,"message":SimpleNamespace(mentions=[],content="what am I listening to")}
@@ -96,7 +98,7 @@ class PresenceStoreTests(unittest.TestCase):
         member=SimpleNamespace(id=2,name="listener",display_name="Listener",joined_at=None,activities=[])
         guild=SimpleNamespace(get_member=lambda _:member,members=[member])
         answer=asyncio.run(_async_get_member_info("","current_music",{"guild":guild,"author":member}))
-        self.assertIn("kapalı",answer)
+        self.assertIn("görünmüyor",answer)
 
 
 if __name__ == "__main__":
