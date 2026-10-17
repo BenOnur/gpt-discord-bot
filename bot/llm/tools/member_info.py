@@ -67,14 +67,15 @@ def current_music_report(member, requester_id=None) -> tuple[str, str | None]:
     return report, query or None
 
 
-def _clean_name(value: str) -> str:
+def _clean_name(value: str, strip_genitive: bool = True) -> str:
     value = unicodedata.normalize("NFKD", value.casefold()).replace("ı", "i")
     value = "".join(c for c in value if not unicodedata.combining(c))
     value = re.sub(r"<@!?(\d+)>", r"\1", value)
     value = " ".join(re.sub(r"[^\w]+", " ", value).split())
     # Turkish genitive forms commonly appear in natural-language requests:
     # "Onur'un" / "Onurun" should still resolve the member named Onur.
-    value = re.sub(r"(?:\s+(?:un|in|nun|nin|nın|nün|ın|ün)|(?:un|in|nun|nin|nın|nün))$", "", value)
+    if strip_genitive:
+        value = re.sub(r"(?:\s+(?:un|in|nun|nin|nın|nün|ın|ün)|(?:un|in|nun|nin|nın|nün))$", "", value)
     return value
 
 
@@ -179,12 +180,12 @@ class PresenceStore:
             row = db.execute("SELECT value FROM metadata WHERE key='tracking_started_at'").fetchone()
         return row[0] if row else "unknown"
 
-    def history(self, guild_id: int, user_id: int, limit: int = 8) -> list[dict[str, Any]]:
+    def history(self, guild_id: int, user_id: int, limit: int = 8, activity_type: int | None = None) -> list[dict[str, Any]]:
         with self._connect() as db:
             rows = db.execute(
                 "SELECT activity_type,activity_name,started_at,ended_at FROM activity_sessions "
-                "WHERE guild_id=? AND user_id=? ORDER BY started_at DESC,id DESC LIMIT ?",
-                (guild_id, user_id, min(max(int(limit), 1), 20)),
+                "WHERE guild_id=? AND user_id=? AND (? IS NULL OR activity_type=?) ORDER BY started_at DESC,id DESC LIMIT ?",
+                (guild_id, user_id, activity_type, activity_type, min(max(int(limit), 1), 20)),
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -235,6 +236,16 @@ def _resolve_member(target: str | None, ctx: dict[str, Any]):
     bot_id = getattr(getattr(ctx.get("bot"), "user", None), "id", None)
     mentions = [member for member in getattr(message, "mentions", ()) if member.id != bot_id]
     query = _clean_name(target or "")
+    aliases = (ctx.get("config") or {}).get("member_aliases", {})
+    alias_matches = {}
+    content = _clean_name(getattr(message, "content", ""))
+    for alias, uid in aliases.items():
+        raw_alias = _clean_name(alias, strip_genitive=False)
+        alias = _clean_name(alias)
+        if alias and (query == alias or (not query and re.search(rf"(?<!\w){re.escape(raw_alias)}(?!\w)", content))):
+            resolved = guild.get_member(int(uid))
+            if resolved:
+                alias_matches[resolved.id] = resolved
     if len(mentions) == 1 and (not query or query in {str(mentions[0].id), _clean_name(mentions[0].name), _clean_name(mentions[0].display_name)}):
         return mentions[0], None
     if len(mentions) > 1:
@@ -246,9 +257,12 @@ def _resolve_member(target: str | None, ctx: dict[str, Any]):
         content = _clean_name(getattr(message, "content", ""))
         candidates = {}
         for member in getattr(guild, "members", ()):
+            if member.id == bot_id:
+                continue
             names = (member.name, member.display_name, getattr(member, "global_name", None) or "")
-            if any(name and re.search(rf"(?<!\w){re.escape(_clean_name(name))}(?!\w)", content) for name in names):
+            if any(name and re.search(rf"(?<!\w){re.escape(_clean_name(name, strip_genitive=False))}(?:un|in|nun|nin)?(?!\w)", content) for name in names):
                 candidates[member.id] = member
+        candidates.update(alias_matches)
         if len(candidates) == 1:
             return next(iter(candidates.values())), None
         if len(candidates) > 1:
@@ -259,6 +273,7 @@ def _resolve_member(target: str | None, ctx: dict[str, Any]):
         if member:
             return member, None
     candidates = {}
+    candidates.update(alias_matches)
     for member in getattr(guild, "members", ()):
         names = (member.name, member.display_name, getattr(member, "global_name", None) or "")
         if query in {_clean_name(name) for name in names if name}:
@@ -273,6 +288,10 @@ def _resolve_member(target: str | None, ctx: dict[str, Any]):
 def member_info_request(text: str) -> str | None:
     """Classify clear join-date and activity questions for a deterministic fast path."""
     text = _clean_name(text)
+    if "oyna" in text and any(term in text for term in ("en son", "son oyn", "gecmis", "oynadigi oyun")):
+        return "game_history" if any(term in text for term in ("liste", "gecmis", "oyunlari")) else "last_game"
+    if "oyun gecmisi" in text:
+        return "game_history"
     if any(term in text for term in ("dinledigim", "dinliyorum", "dinledigi", "spotify", "hangi sarki", "ne dinliyor")):
         return "music_research" if any(term in text for term in ("arastir", "bilgi", "hakkinda")) else "current_music"
     if any(term in text for term in ("ne zaman sunucuya girdi", "ne zaman sunucuya katildi", "sunucuya katilma tarihi", "ne zamandir sunucuda", "katildigi tarih")):
@@ -318,7 +337,8 @@ async def _async_get_member_info(target: str | None, include: str, ctx: dict[str
     records = []
     started = None
     if tracker and tracker.store and tracker.tracks(guild.id):
-        records = tracker.store.history(guild.id, member.id, 8)
+        records = tracker.store.history(guild.id, member.id, 8,
+            activity_type=0 if include in ("last_game", "game_history") else None)
         started = tracker.store.tracking_started_at()
 
     def label(activity_type: int, name: str) -> str:
@@ -346,14 +366,16 @@ async def _async_get_member_info(target: str | None, include: str, ctx: dict[str
             ended = datetime.fromisoformat(last_game["ended_at"]).astimezone().strftime("%d.%m.%Y %H:%M") if last_game["ended_at"] else "son görüldüğünde hâlâ açıktı"
             return f"Kaydedilmiş son oyunu {last_game['activity_name']} ({ended})."
         return f"{member.display_name} için henüz kaydedilmiş bir oyun yok. İzleme başlangıcı: {started or 'bilinmiyor'}. Önceki oyun geçmişi Discord’dan geriye dönük alınamıyor."
-    if include == "activity_history":
+    if include in ("activity_history", "game_history"):
         if not records:
-            return f"{member.display_name} için henüz etkinlik geçmişi kaydedilmemiş. İzleme başlangıcı: {started or 'bilinmiyor'}."
+            kind = "oyun" if include == "game_history" else "etkinlik"
+            return f"{member.display_name} için henüz kaydettiğim bir {kind} yok. Yalnız takibe başladıktan sonra gördüklerimi biliyorum."
         lines = []
         for row in records:
             when = datetime.fromisoformat(row["started_at"]).astimezone().strftime("%d.%m.%Y %H:%M")
-            lines.append(f"{when}: {label(int(row['activity_type']), row['activity_name'])}")
-        return f"{member.display_name} için botun kaydettiği son Discord etkinlikleri:\n" + "\n".join(lines)
+            lines.append(f"• {row['activity_name']} — {when}")
+        kind = "oynadığını gördüğüm son oyunlar" if include == "game_history" else "gördüğüm son etkinlikler"
+        return f"{member.display_name} için {kind}:\n" + "\n".join(lines)
 
     activity_text = ", ".join(label(*item) for item in current) if current else "paylaşılan güncel etkinlik yok"
     return f"{member.display_name}: sunucuya katılma tarihi {joined}; şu an {activity_text}."
@@ -382,7 +404,7 @@ MEMBER_INFO_SCHEMA = {
             "type": "object",
             "properties": {
                 "target": {"type": "string", "description": "Member username, server display name, user ID, or omit when one person is tagged or the question is about the message author."},
-                "include": {"type": "string", "enum": ["summary", "joined_at", "current_activity", "current_music", "last_game", "activity_history"], "description": "Select join date, current activity details from all visible apps, current music, last game or observed history."},
+                "include": {"type": "string", "enum": ["summary", "joined_at", "current_activity", "current_music", "last_game", "game_history", "activity_history"], "description": "Use game_history to list observed games, last_game for latest game; activity_history includes music and other activities. Read history before claiming it is unavailable."},
             },
         },
     },

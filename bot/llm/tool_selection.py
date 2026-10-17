@@ -5,7 +5,8 @@ import re
 
 def select_tools(text, available, procedures=()):
     text = normalize(text)
-    selected = {"manage_memory", "web_search", "get_current_time"}
+    # Member observation is a core capability, not a keyword-gated optional tool.
+    selected = {"manage_memory", "web_search", "get_current_time", "get_member_info"}
     groups = [
         (("hatirlat", "etiketle", "ertele", "dakika", "saat sonra"), ("set_reminder", "manage_reminders")),
         (("dinle", "sarki", "spotify", "oyun", "oynuyor", "katildi", "sunucuya"), ("get_member_info",)),

@@ -71,11 +71,36 @@ class PresenceStoreTests(unittest.TestCase):
         self.assertEqual(member_info_request("@bot Onur'un ne zaman sunucuya girdiğini söylesene"), "joined_at")
         self.assertEqual(member_info_request("Onur en son hangi oyunu oynamış?"), "last_game")
         self.assertEqual(member_info_request("Onur şu an ne oynuyor?"), "current_activity")
-        self.assertEqual(member_info_request("Onur'un oyun geçmişi ne?"), "activity_history")
+        self.assertEqual(member_info_request("Onur'un oyun geçmişi ne?"), "game_history")
+        self.assertEqual(member_info_request("sezin en son ne oynamış listelesene"), "game_history")
+        self.assertEqual(member_info_request("sezin en son ne oynamış"), "last_game")
         self.assertIsNone(member_info_request("Onur bugün nasıldı?"))
 
     def test_member_info_tool_is_auto_discovered(self):
         self.assertIn("get_member_info", build_tool_registry())
+
+    def test_member_tool_is_available_without_exact_keyword(self):
+        from bot.llm.tool_selection import select_tools
+        self.assertIn("get_member_info", select_tools("sezin en son ne oynamış listelesene", ["get_member_info"]))
+        self.assertIn("get_member_info", select_tools("sezin neler yapmış", ["get_member_info"]))
+
+    def test_game_filter_precedes_limit_and_alias_resolves_named_person(self):
+        import asyncio
+        from bot.llm.tools.member_info import _async_get_member_info, _resolve_member
+        start = datetime.now(timezone.utc)-timedelta(hours=1)
+        self.store.update(1, 2, [SimpleNamespace(type=0, name="Game A")], start)
+        for index in range(12):
+            self.store.update(1, 2, [SimpleNamespace(type=2, name=f"Song {index}")], start+timedelta(minutes=index+1))
+        self.assertEqual(self.store.history(1, 2, 8, activity_type=0)[0]["activity_name"], "Game A")
+        member = SimpleNamespace(id=2,name="different_username",display_name="Nickname",joined_at=None,activities=[])
+        guild = SimpleNamespace(id=1,members=[member],get_member=lambda uid: member if uid==2 else None)
+        ctx = {"guild":guild,"author":SimpleNamespace(id=3),"message":SimpleNamespace(mentions=[], content="sezin en son ne oynamış listelesene"),
+               "config":{"member_aliases":{"sezin":2}},"presence_tracker":SimpleNamespace(store=self.store,tracks=lambda _:True)}
+        self.assertEqual(_resolve_member("",ctx)[0].id, 2)
+        self.assertEqual(_resolve_member("Sezin",ctx)[0].id, 2)
+        answer=asyncio.run(_async_get_member_info("", "game_history", ctx))
+        self.assertIn("Game A", answer)
+        self.assertNotIn("Song", answer)
 
     def test_spotify_song_and_link_are_read_from_live_activity(self):
         import asyncio
