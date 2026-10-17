@@ -1,8 +1,9 @@
 """Small relevant tool menus instead of sending every schema on every turn."""
 from bot.assistant_memory import normalize
+import re
 
 
-def select_tools(text, available):
+def select_tools(text, available, procedures=()):
     text = normalize(text)
     selected = {"manage_memory", "web_search", "get_current_time"}
     groups = [
@@ -28,4 +29,9 @@ def select_tools(text, available):
     for terms, tools in groups:
         if any(term in text for term in terms):
             selected.update(tools)
+    # A saved procedure can make an existing configured tool relevant even if
+    # today's shorthand request omits its usual natural-language keywords.
+    for tool in available:
+        if any(re.search(r"(?<!\w)"+re.escape(tool)+r"(?!\w)", procedure) for procedure in procedures):
+            selected.add(tool)
     return [tool for tool in available if tool in selected]

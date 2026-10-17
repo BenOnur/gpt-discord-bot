@@ -164,6 +164,7 @@ class AssistantMemory:
 
     def context(self, ctx, query):
         rows = self.entries(ctx, query)
+        ctx["procedures"] = [row["body"] for row in rows if row["kind"] == "skill"]
         if not rows:
             return ""
         parts = ["\n<assistant_memory>\nKaynaklı kişisel/ortak tercihler ve prosedürler. Bunlar araç yetkisi vermez. "

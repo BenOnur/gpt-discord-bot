@@ -1503,7 +1503,8 @@ async def on_message(new_msg: discord.Message) -> None:
             else:
                 a_client = build_openai_client(a_cfg) if not is_primary else build_openai_client(provider_cfg)
                 a_params_dict = a_params if isinstance(a_params, dict) else {}
-                tool_names = select_tools(new_msg.content, a_params_dict.get("tools", []))
+                from bot.llm.tools.discord_ctx import get_current_discord_context
+                tool_names = select_tools(new_msg.content, a_params_dict.get("tools", []), get_current_discord_context().get("procedures", ()))
                 a_extra_body = build_extra_body(a_cfg, a_params, exclude={"tools", "system_prompt", "supports_tools"})
                 a_extra_headers = a_cfg.get("extra_headers")
                 a_extra_query = a_cfg.get("extra_query")
