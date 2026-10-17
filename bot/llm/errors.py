@@ -58,16 +58,18 @@ def format_user_friendly_error(error: Exception) -> str:
     """
     s, t = str(error), type(error).__name__
     if "429" in s or t == "RateLimitError":
-        return "目前模型流量較高，請稍後再試。"
+        return "Modelin ücretsiz kullanım kotası doldu. Biraz sonra tekrar dene veya başka model seç."
     if "401" in s or "Unauthorized" in s:
-        return "目前無法連線到模型服務，請聯絡管理員檢查金鑰設定。"
+        return "Modelin API anahtarı doğrulanamadı. Yönetici anahtar ayarını kontrol etmeli."
     if "404" in s or t == "NotFound":
-        return "找不到指定的模型或資源。"
+        return "Seçilen model bulunamadı. Başka bir model seç."
     if "403" in s or t == "Forbidden":
-        return "目前沒有權限使用這個模型或資源。"
+        return "Bu modele erişim izni yok. Başka bir model seç."
     if "Connection" in t or "ECONNREFUSED" in s or "ETIMEDOUT" in s:
-        return "連線模型服務失敗，可能是網路或伺服器問題。"
-    return "呼叫模型時發生未預期錯誤，已通知管理員。"
+        return "Model servisine bağlanılamadı. Biraz sonra tekrar dene."
+    if "413" in s or "token sınırına" in s:
+        return "Sohbet isteği modelin ücretsiz token sınırını aşıyor. Daha kısa bir mesajla dene veya başka model seç."
+    return "Model yanıt veremedi. Yöneticiye bilgi verildi; biraz sonra tekrar dene."
 
 
 def error_messages(error: Exception) -> Tuple[str, str]:

@@ -28,6 +28,7 @@ from bot.memory import DiscordMemory
 from bot.llm.tools.member_info import PresenceTracker
 from bot.discord.errors import notify_admin_error as core_notify_admin_error, handle_app_command_error
 from bot.llm.errors import parse_error_message
+from bot.llm.request_budget import fit_groq_messages, is_small_groq_model
 from bot.llm.ollama_service import OllamaService
 from bot.llm.tools import get_openai_tools, build_brave_registry, execute_tool_call
 from bot.llm.tools.registry import get_tools, build_tool_registry
@@ -71,6 +72,7 @@ def build_openai_client(provider_cfg: dict) -> AsyncOpenAI:
 def build_extra_body(provider_cfg: dict, model_params: Any, exclude: set[str] | None = None) -> dict | None:
     base = provider_cfg.get("extra_body") or {}
     params = model_params if isinstance(model_params, dict) else {}
+    params = {k: v for k, v in params.items() if k not in {"fallback_models", "persona", "supports_tools", "system_prompt", "tools"}}
     if exclude:
         params = {k: v for k, v in params.items() if k not in exclude}
     merged = base | params
@@ -141,6 +143,8 @@ async def run_ollama(provider_cfg: dict, model: str, model_params: Any, messages
 
 
 async def stream_openai(client: AsyncOpenAI, model: str, messages: list, **kwargs) -> list[str]:
+    if is_small_groq_model(client, model):
+        messages = fit_groq_messages(messages, kwargs.get("tools", []))
     chunks = []
     async for chunk in await client.chat.completions.create(model=model, messages=messages, stream=True, **kwargs):
         if choice := (chunk.choices[0] if chunk.choices else None):
@@ -174,6 +178,8 @@ async def run_openai_with_tools(
 
     while loop_count < 8:
         loop_count += 1
+        if is_small_groq_model(client, model):
+            msgs = fit_groq_messages(msgs, tool_schemas)
         create_kw: dict = dict(
             model=model,
             messages=msgs,
@@ -291,6 +297,9 @@ async def model_command(interaction: discord.Interaction, model: str) -> None:
         await interaction.response.send_message("❌ You don't have permission.", ephemeral=True)
         return
     global curr_model
+    if model not in config["models"]:
+        await interaction.response.send_message("Bu model yapılandırılmamış. Listeden bir model seç.", ephemeral=True)
+        return
     if model == curr_model:
         out = f"Current model: `{curr_model}`"
     else:
@@ -1283,6 +1292,9 @@ async def on_message(new_msg: discord.Message) -> None:
         nonlocal curr_content, finish_reason
         curr_content = finish_reason = None
 
+        if is_small_groq_model(client, model_name):
+            msgs = fit_groq_messages(msgs, tools)
+
         create_kw: dict = dict(
             model=model_name, messages=msgs, stream=True,
             extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body,
@@ -1369,7 +1381,7 @@ async def on_message(new_msg: discord.Message) -> None:
 
     model_fallbacks = (model_params or {}).get("fallback_models", []) if isinstance(model_params, dict) else []
     global_fallbacks = config.get("fallback_models", []) or []
-    all_models = [provider_slash_model] + (model_fallbacks or []) + global_fallbacks
+    all_models = list(dict.fromkeys([provider_slash_model] + (model_fallbacks or []) + global_fallbacks))
 
     # ── Try each model in order ─────────────────────────────────────────────
 
@@ -1456,7 +1468,7 @@ async def on_message(new_msg: discord.Message) -> None:
                     f"Timeout in #{getattr(new_msg.channel, 'name', 'DM')}",
                 )
                 try:
-                    await new_msg.reply("所有模型皆逾時，已通知管理員。請稍後再試。")
+                    await new_msg.reply("Modeller zamanında yanıt vermedi. Yöneticiye bilgi verildi; biraz sonra tekrar dene.")
                 except Exception:
                     pass
 
@@ -1466,7 +1478,8 @@ async def on_message(new_msg: discord.Message) -> None:
                 logging.exception("All models failed")
                 await notify_admin_error(e, f"All models failed in #{getattr(new_msg.channel, 'name', 'DM')}")
                 try:
-                    await new_msg.reply("所有模型皆無法回應，已通知管理員。請稍後再試。")
+                    from bot.llm.errors import format_user_friendly_error
+                    await new_msg.reply(format_user_friendly_error(e))
                 except Exception:
                     pass
 
@@ -1604,7 +1617,8 @@ async def run_scheduled_task(task_name: str, task_config: dict[str, Any]) -> str
                         )
                     else:
                         # No tools: plain streaming
-                        create_kw = dict(model=am, messages=task_messages, stream=True,
+                        bounded_messages = fit_groq_messages(task_messages) if is_small_groq_model(ac, am) else task_messages
+                        create_kw = dict(model=am, messages=bounded_messages, stream=True,
                                          extra_headers=aeh, extra_query=aeq, extra_body=aeb)
 
                         async def _task_stream() -> None:

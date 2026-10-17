@@ -18,6 +18,15 @@ records by default, and cannot reconstruct activity from before tracking began.
 
 ### Documentation
 
+Groq GPT-OSS chat requests include a conservative 5,000-token input budget,
+counting tool schemas and metadata. Older complete turns are dropped while
+system instructions and the latest turn stay intact. Oversized latest turns
+fail over to a different configured provider; free-tier quotas still apply.
+
+OpenCode's `glm-5.3-flash-free` cannot currently be used by this standalone bot:
+a direct API probe returned `403 FreeTierError`, stating that free-tier use is
+restricted to OpenCode. Do not substitute the paid `glm-5.3-flash` model.
+
 The authorized-users-only `/tepkiler` command opens a private reaction management panel.
 Select a server member, edit up to eight Unicode or server custom emojis, then
 save and enable, pause, or delete that member's automatic reactions. Settings
