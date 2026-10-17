@@ -316,7 +316,7 @@ async def model_command(interaction: discord.Interaction, model: str) -> None:
         return
     global curr_model
     if config.get("assistant_model") and model != config["assistant_model"]:
-        await interaction.response.send_message("Sunucu asistanı GPT-6 Luna low modeline sabitlenmiş.", ephemeral=True)
+        await interaction.response.send_message(f"Sunucu asistanı `{config['assistant_model']}` modeline sabitlenmiş.", ephemeral=True)
         return
     if model not in config["models"]:
         await interaction.response.send_message("Bu model yapılandırılmamış. Listeden bir model seç.", ephemeral=True)
@@ -339,7 +339,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
 async def model_autocomplete(interaction: discord.Interaction, curr_str: str) -> list[Choice[str]]:
     global config
     if pinned := config.get("assistant_model"):
-        return [Choice(name=pinned + " (low · sabit)", value=pinned)]
+        return [Choice(name=pinned + " (sabit)", value=pinned)]
     if curr_str == "":
         config = await asyncio.to_thread(get_config)
     choices = [Choice(name=f"◉ {curr_model} (current)", value=curr_model)] if curr_str.lower() in curr_model.lower() else []
