@@ -39,22 +39,30 @@ def live_activity_snapshot(member) -> list[dict[str, Any]]:
     return result
 
 
-def current_music_report(member) -> tuple[str, str | None]:
+def current_music_report(member, requester_id=None) -> tuple[str, str | None]:
     activities = live_activity_snapshot(member)
     # Third-party music apps may publish Playing, Listening, or Watching.
     candidates = [a for a in activities if a["details"] or a["state"] or a["type"] == 2]
-    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    header = f"{member.display_name}: Discord tarafından paylaşılan canlı etkinlik (sorgu: {stamp}). "
+    is_self = requester_id is not None and getattr(member, "id", None) == requester_id
     if not candidates:
-        return header + "Şarkı adı/sanatçı ayrıntısı görünmüyor. Geçmiş kayıtlar şu an dinlediğin şarkıyı kanıtlamaz.", None
-    lines = [f"Uygulama: {a['app']}; details: {a['details'] or 'yok'}; state: {a['state'] or 'yok'}" +
-             (f"; Kaynak: {a['source']}" if a.get("source") else "") for a in candidates]
-    report = header + "\n" + "\n".join(lines)
+        subject = "Dinlediğin şarkı" if is_self else f"{member.display_name} adlı kişinin dinlediği şarkı"
+        return f"{subject} şu an görünmüyor. Eski dinlediklerinden tahmin yürütmeyeyim.", None
+    def track(item):
+        return " — ".join(value for value in (item["state"], item["details"]) if value) or "parça adı görünmüyor"
     if len(candidates) != 1:
-        return report + "\nBirden fazla etkinlik var; hangisinin duyduğun müzik olduğunu kesinleştiremiyorum. Uygulamayı belirt.", None
+        options = "; ".join(f"{a['app']}: {track(a)}" for a in candidates)
+        return f"Birden fazla etkinlik görünüyor: {options}. Hangisinden dinliyorsun?", None
     item = candidates[0]
     if item["app"] != "Spotify" and item["type"] != 2:
-        report += "\nUygulama müzik dinleme türünde bildirilmemiş. Bu alanları araştırabilirim; şarkı adı/sanatçı eşlemesi kesin değildir."
+        report = f"{item['app']} etkinliğinde **{track(item)}** görünüyor. Bunun dinlediğin parça olduğundan kesin emin değilim."
+    else:
+        subject = "Şu an" if is_self else f"{member.display_name} şu an"
+        verb = "dinliyorsun" if is_self else "dinliyor"
+        report = f"{subject} **{track(item)}** {verb}."
+        if item["app"] != "Spotify":
+            report += f" ({item['app']})"
+    if item.get("source"):
+        report += f"\n[Spotify’da aç](<{item['source']}>)"
     query = " ".join([item["details"], item["state"]]).strip()
     return report, query or None
 
@@ -302,7 +310,7 @@ async def _async_get_member_info(target: str | None, include: str, ctx: dict[str
 
     activities = PresenceStore._activities(getattr(member, "activities", ()))
     if include in ("current_music", "music_research"):
-        report, query = current_music_report(member)
+        report, query = current_music_report(member, getattr(ctx.get("author"), "id", None))
         ctx["music_query"] = query
         return report
     current = list(activities.values())
