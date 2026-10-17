@@ -108,9 +108,12 @@ class ChatGPTPlanClient:
         async with AsyncOpenAI(api_key=token, base_url=str(self.base_url), max_retries=0) as client:
             events = await client.responses.create(**payload)
             final = None
+            completed_items = {}
             try:
                 async for event in events:
-                    if event.type == "response.completed":
+                    if event.type == "response.output_item.done":
+                        completed_items[event.output_index] = event.item
+                    elif event.type == "response.completed":
                         final = event.response
                     elif event.type in ("response.failed", "response.incomplete", "error"):
                         error = getattr(getattr(event, "response", None), "error", None)
@@ -120,8 +123,11 @@ class ChatGPTPlanClient:
                 await events.close()
         if final is None:
             raise RuntimeError("ChatGPT akışı tamamlanma kanıtı olmadan kapandı.")
+        output = final.output or [completed_items[index] for index in sorted(completed_items)]
+        if not output:
+            raise RuntimeError("ChatGPT tamamlandı fakat yanıt öğesi gelmedi.")
         calls, texts = [], []
-        for item in final.output:
+        for item in output:
             if item.type == "function_call":
                 calls.append({"id": item.call_id, "type": "function", "function": {
                     "name": item.name, "arguments": item.arguments}})
@@ -130,7 +136,7 @@ class ChatGPTPlanClient:
         result = {"id": final.id, "object": "chat.completion", "created": int(time.time()), "model": model,
                   "choices": [{"index": 0, "finish_reason": "tool_calls" if calls else "stop",
                                "message": {"role": "assistant", "content": "\n".join(texts), "tool_calls": calls or None,
-                                           "responses_output": [item.model_dump(exclude_none=True) for item in final.output]}}]}
+                                           "responses_output": [item.model_dump(exclude_none=True) for item in output]}}]}
         if not stream:
             return ChatCompletion.model_validate(result)
         async def chunks():

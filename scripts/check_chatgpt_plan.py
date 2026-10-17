@@ -29,6 +29,8 @@ async def main():
     first = await client.create(model="gpt-6-luna", messages=messages, tools=tools)
     message = first.choices[0].message
     if not message.tool_calls:
+        print("Synthetic smoke reply:", message.content)
+        print("Output item types:", [item.get("type") for item in message.model_dump().get("responses_output", [])])
         raise RuntimeError("Tool smoke did not invoke calculate")
     messages.append(message.model_dump(exclude_none=True))
     for call in message.tool_calls:

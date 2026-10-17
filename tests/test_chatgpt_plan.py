@@ -75,3 +75,14 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
         result = await self.exercise([Obj(type="response.completed", response=Obj(id="r1", output=[item]))])
         self.assertEqual(result.choices[0].message.tool_calls[0].function.name, "calculate")
         self.assertTrue(result.choices[0].message.model_dump()["responses_output"])
+
+    async def test_terminal_snapshot_can_omit_already_streamed_items(self):
+        from types import SimpleNamespace as Obj
+        from unittest.mock import MagicMock
+        item = MagicMock()
+        item.type = "message"
+        item.content = [Obj(type="output_text", text="7")]
+        item.model_dump.return_value = {"type":"message", "role":"assistant", "content":[{"type":"output_text", "text":"7"}]}
+        result = await self.exercise([Obj(type="response.output_item.done", output_index=0, item=item),
+                                     Obj(type="response.completed", response=Obj(id="r2", output=[]))])
+        self.assertEqual(result.choices[0].message.content, "7")
