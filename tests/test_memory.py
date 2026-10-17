@@ -124,6 +124,31 @@ class MemoryTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT filename FROM media").fetchone()[0],"photo.png")
             self.assertIn("photo.png",db.execute("SELECT content FROM messages").fetchone()[0])
 
+    def test_warm_search_bridge_still_filters_private_sources(self):
+        async def run():
+            seen=[]
+            async def handle(reader,writer):
+                seen.append(json.loads(await reader.readline()))
+                writer.write(json.dumps({"results":[{"file_path":"guild-30/channel-21/hidden.md","content":"private secret"},
+                                                     {"file_path":"guild-30/channel-20/public.md","content":"visible note"}]}).encode()+b"\n")
+                await writer.drain()
+                writer.close()
+                await writer.wait_closed()
+            server=await asyncio.start_server(handle,"127.0.0.1",0)
+            self.memory.settings['retrieval_port']=server.sockets[0].getsockname()[1]
+            allowed=Obj(id=20,permissions_for=lambda _:Obj(view_channel=True,read_message_history=True))
+            message=msg()
+            message.guild=Obj(id=30,text_channels=[allowed],threads=[])
+            try:
+                result=await self.memory.recall(message)
+                self.assertIn("visible note",result)
+                self.assertNotIn("private secret",result)
+                self.assertEqual(len(seen),1)
+            finally:
+                server.close()
+                await server.wait_closed()
+        asyncio.run(run())
+
 
 if __name__ == "__main__":
     unittest.main()

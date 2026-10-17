@@ -137,6 +137,15 @@ class SafeHTTPTests(unittest.TestCase):
 
 
 class BudgetAndToolSelectionTests(unittest.TestCase):
+    def test_warm_retrieval_accepts_structured_and_json_results_only(self):
+        import sys
+        sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"scripts"))
+        from memory_retrieval_server import search_payload
+        self.assertEqual(search_payload({"structuredContent":{"results":[]}}),{"results":[]})
+        self.assertEqual(search_payload({"content":[{"type":"text","text":'{"results":[]}'}]}),{"results":[]})
+        with self.assertRaises(RuntimeError):
+            search_payload({"isError":True,"structuredContent":{"results":[]}})
+
     def test_shared_budget_prevents_overbooking_and_background_competition(self):
         from bot.llm.quota import reserve
         with tempfile.TemporaryDirectory() as folder:

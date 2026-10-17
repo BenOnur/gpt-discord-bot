@@ -1,0 +1,29 @@
+[Unit]
+Description=Warm local search for Discord AI memory
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=discord-ai
+Group=discord-ai
+WorkingDirectory=/opt/discord-ai-bot
+Environment=BASIC_MEMORY_CONFIG_DIR=/var/lib/discord-ai-memory/config
+Environment=BASIC_MEMORY_HOME=/var/lib/discord-ai-memory/vault
+Environment=BASIC_MEMORY_SEMANTIC_EMBEDDING_THREADS=1
+Environment=BASIC_MEMORY_LOGFIRE_ENABLED=false
+Environment=HF_HUB_DISABLE_TELEMETRY=1
+Environment=HF_HOME=/var/lib/discord-ai-memory/cache/huggingface
+Environment=XDG_CACHE_HOME=/var/lib/discord-ai-memory/cache
+ExecStart=/opt/discord-memory-venv/bin/python /opt/discord-ai-bot/scripts/memory_retrieval_server.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/discord-ai-memory
+MemoryMax=1300M
+
+[Install]
+WantedBy=multi-user.target

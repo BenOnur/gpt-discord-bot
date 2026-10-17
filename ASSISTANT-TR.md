@@ -42,6 +42,10 @@ Ham mesajlar aranabilir arşive girer. Dört güncel analiz partisine karşılı
 eski arşiv partisi işlenir; yeni kararlar yıllar önceki backlog'u beklemez.
 Basic Memory için isteğe bağlı `memory.hybrid_search` metin/anlam aramasını açar.
 Yerel embedding modeli ayrıca hazırlanıp indeks yeniden oluşturulmalıdır.
+`discord-memory-retrieval.service` Basic Memory aramasını sıcak tutar; yalnız
+127.0.0.1:8801 üzerinde arama/sağlık sorgusu sunar. Bot `memory.retrieval_port`
+ile bağlanır; kanal/kişi filtreleri botta tekrar uygulanır. Servis yoksa ham
+arşiv ve açık asistan kayıtları çalışmaya devam eder.
 
 `memory.image_index_enabled`, geçmiş/gelecek görsellerin metadata taramasını ve
 sınırlı görsel açıklaması/OCR işini açar. `max_image_calls_per_day` varsayılan 5.

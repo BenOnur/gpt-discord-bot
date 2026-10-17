@@ -113,6 +113,18 @@ class DiscordMemory:
             await asyncio.to_thread(self.save, message)
 
     async def command(self, *args, content=None):
+        if args[:2] == ("tool", "search-notes") and self.settings.get("retrieval_port"):
+            reader, writer = await asyncio.open_connection("127.0.0.1", int(self.settings["retrieval_port"]), limit=1_000_000)
+            try:
+                writer.write(json.dumps({"query": args[2], "hybrid": "--hybrid" in args, "limit": 50}, ensure_ascii=False).encode()+b"\n")
+                await writer.drain()
+                result=json.loads(await asyncio.wait_for(reader.readline(), 7))
+                if result.get("error"):
+                    raise RuntimeError("Warm memory retrieval failed")
+                return result
+            finally:
+                writer.close()
+                await writer.wait_closed()
         env = os.environ.copy()
         env.update(BASIC_MEMORY_CONFIG_DIR=str(self.root / "config"),
                    BASIC_MEMORY_HOME=str(self.root / "vault"),
