@@ -106,6 +106,19 @@ garanti etmez. Açık prosedürler otomatik kod yükseltme/deploy yetkisi vermez
 
 ## ChatGPT abonelik bağlantısı (isteğe bağlı)
 
+### Arşivden gelişen konuşma tarzı
+
+`bot/group_voice.py` erişim izni olan kaynaklardan son 1500 mesaj ve önceki beş
+yıldan yılda en çok 100 mesaj örnekler. Kişi başına 150 mesaj sınırıyla grubun
+konuşma ritmi, kısa mesajları, küçük harf alışkanlığı ve yaygın argo ifadeleri
+çıkarılır. Ham mesajlar veya kişi profilleri üslup dosyasına kopyalanmaz.
+Küçük özet `memory.data_dir/voice/` altında erişim kapsamına göre ayrı tutulur;
+bir saat sonra gelen ilk istekte yenilenir. Ek model çağrısı yapmaz. Bu katman
+model ağırlığı eğitmez; kaynaklı grup hafızası ve ana persona ile birlikte çalışır.
+Ciddi görev ile karşılıklı makara ayrılır; küfür tek başına sataşma sayılmaz.
+
+### Abonelik girişi
+
 `scripts/chatgpt_plan_login.py --credentials /var/lib/discord-ai-memory/auth/chatgpt.json`
 resmî Sign in with ChatGPT akışını başlatır. VDS loopback callback portu 1456 için
 giriş sırasında SSH tüneli gerekir; sonrasında PC bağlantısı gerekmez. Ayrı giriş
