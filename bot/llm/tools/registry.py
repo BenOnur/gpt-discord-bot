@@ -220,10 +220,33 @@ def execute_tool_call(
     if not entry or not entry.fn:
         logging.warning("execute_tool_call: unknown or unavailable tool '%s'", name)
         return f"Tool '{name}' is not available."
-    logging.info("execute_tool_call: '%s' args=%s", name, args)
+    logging.info("execute_tool_call: '%s'", name)
+    from .discord_ctx import get_current_discord_context
+    ctx = get_current_discord_context()
+    memory = ctx.get("assistant_memory")
+    message_id = getattr(ctx.get("message"), "id", None)
+    side_effects = {"set_reminder", "manage_reminders", "server_trivia", "generate_quote", "send_profile_avatar", "react_to_message", "voice_speak", "manage_memory"}
+    effect = None
+    if memory and isinstance(message_id, int) and name in side_effects:
+        import hashlib
+        digest = hashlib.sha256(json.dumps(args, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        effect = (message_id, name, digest)
+        with memory.connect() as db:
+            row = db.execute("SELECT result FROM effects WHERE message=? AND tool=? AND args_hash=?", effect).fetchone()
+            if row:
+                return row[0]
+            db.execute("INSERT INTO effects VALUES(?,?,?,?)", (*effect, "İşlem başlatıldı; aynı mesaj için tekrar çalıştırılmayacak. Sonuç kesinleşmeden tamamlandı deme."))
     try:
         result = entry.fn(**args)
     except Exception as e:
-        logging.error("execute_tool_call: tool '%s' failed: %s", name, e)
-        return f"Tool error: {e}"
-    return format_tool_result(entry, result, args)[:max_chars]
+        logging.error("execute_tool_call: tool '%s' failed (%s)", name, type(e).__name__)
+        result = f"Araç hatası: {type(e).__name__}. İşlemin başarıyla tamamlandığını söyleme."
+    formatted = format_tool_result(entry, result, args)[:max_chars]
+    if effect:
+        with memory.connect() as db:
+            db.execute("UPDATE effects SET result=? WHERE message=? AND tool=? AND args_hash=?", (formatted, *effect))
+            db.execute("DELETE FROM effects WHERE message NOT IN (SELECT message FROM effects ORDER BY message DESC LIMIT 2000)")
+    failures = ("hata", "error", "failed", "bulunamad", "yok", "kullanılam", "kurulamad", "yetkin", "yetki", "başarısız")
+    if isinstance(ctx.get("successful_tools"), list) and name not in ("manage_memory", "manage_reminders") and not any(word in formatted.casefold() for word in failures):
+        ctx["successful_tools"].append(name)
+    return formatted

@@ -26,6 +26,7 @@ import sqlite3
 import sys
 import tempfile
 import time
+import json
 
 import httpx
 
@@ -79,6 +80,23 @@ def create_snapshot(staging_dir: Path) -> None:
     # 1. Atomic backup of SQLite databases
     backup_sqlite(MEMORY_DIR / "archive.sqlite3", staging_dir / "archive.sqlite3")
     backup_sqlite(MEMORY_DIR / "reminders.sqlite3", staging_dir / "reminders.sqlite3")
+    backup_sqlite(MEMORY_DIR / "assistant.sqlite3", staging_dir / "assistant.sqlite3")
+    backup_sqlite(MEMORY_DIR / "rich_presence.sqlite3", staging_dir / "rich_presence.sqlite3")
+    if (MEMORY_DIR / "self_reactions.json").exists():
+        shutil.copy2(MEMORY_DIR / "self_reactions.json", staging_dir / "self_reactions.json")
+    if (MEMORY_DIR / "assistant").exists():
+        shutil.copytree(MEMORY_DIR / "assistant", staging_dir / "assistant", dirs_exist_ok=True)
+    config_path = Path(__file__).resolve().parent.parent / "config.yaml"
+    if config_path.exists():
+        import yaml
+        config = yaml.safe_load(config_path.read_text())
+        def redact(value):
+            if isinstance(value, dict):
+                return {k: "[secret omitted]" if any(word in k.lower() for word in ("key", "token", "password", "secret")) else redact(v) for k,v in value.items()}
+            if isinstance(value, list):
+                return [redact(v) for v in value]
+            return value
+        (staging_dir / "bot-config.redacted.json").write_text(json.dumps(redact(config), ensure_ascii=False, indent=2), encoding="utf-8")
 
     # 2. Config directory (memory.db + config.json, excluding model cache)
     config_src = MEMORY_DIR / "config"
@@ -103,7 +121,7 @@ def rotate_local_backups(keep_count: int = 3) -> None:
     """Keep only the latest N backup files locally to conserve disk space."""
     if not BACKUP_STORE_DIR.exists():
         return
-    backups = sorted(BACKUP_STORE_DIR.glob("discord-memory-*.tar.gz"), key=lambda p: p.stat().st_mtime)
+    backups = sorted(BACKUP_STORE_DIR.glob("discord-memory-*.tar.gz*"), key=lambda p: p.stat().st_mtime)
     while len(backups) > keep_count:
         oldest = backups.pop(0)
         try:
@@ -170,8 +188,12 @@ def execute_backup(trigger_name: str = "Otomatik Zamanlayıcı") -> Path:
             root_dir=staging,
         )
 
+    keyfile = Path(os.environ.get("BACKUP_KEY_FILE", "/etc/discord-ai-bot/backup.key"))
+    if keyfile.exists():
+        from backup_crypto import encrypt_backup
+        tar_path = encrypt_backup(tar_path, keyfile)
     size_mb = tar_path.stat().st_size / (1024 * 1024)
-    logger.info("Created compressed archive %s (%.2f MB)", tar_path.name, size_mb)
+    logger.info("Created backup %s (%.2f MB)", tar_path.name, size_mb)
 
     # Send to Telegram DM
     send_to_telegram(tar_path, token, chat_id, trigger_name=trigger_name)

@@ -8,6 +8,7 @@ import logging
 import os
 from pathlib import Path
 import sqlite3
+from bot.archive_access import open_archive
 
 from bot.llm.tools._types import ToolEntry
 
@@ -24,7 +25,7 @@ def search_server_history(query: str) -> str:
         return "Sunucu mesaj arşivi henüz oluşturulmamış veya erişilemiyor."
 
     try:
-        db = sqlite3.connect(_ARCHIVE_PATH, timeout=5)
+        db = open_archive(_ARCHIVE_PATH)
         db.row_factory = sqlite3.Row
 
         # Try FTS5 search
@@ -54,7 +55,7 @@ def search_server_history(query: str) -> str:
         lines = [f"📜 Sunucu Arşiv Eşleşmeleri ('{clean_query}'):"]
         for r in matches:
             date_str = str(r["created"])[:16]
-            lines.append(f"- **{r['name']}** [{date_str}]: \"{r['content'][:250]}\"")
+            lines.append(f"- **{r['name']}** [{date_str}]: \"{r['content'][:250]}\" — {r['url']}")
 
         return "\n".join(lines)
     except Exception as e:

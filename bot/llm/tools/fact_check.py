@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+from bot.archive_access import open_archive
 from typing import Any
 
 from bot.llm.tools._types import ToolEntry
@@ -31,7 +32,7 @@ def fact_check(claim: str, user_name: str | None = None) -> str:
     clean_user = user_name.strip().lstrip("@") if user_name else ""
 
     try:
-        db = sqlite3.connect(_ARCHIVE_PATH, timeout=5)
+        db = open_archive(_ARCHIVE_PATH)
         db.row_factory = sqlite3.Row
 
         # Try to resolve author ID if user_name is given

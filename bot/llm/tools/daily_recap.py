@@ -10,6 +10,7 @@ import logging
 import os
 from pathlib import Path
 import sqlite3
+from bot.archive_access import open_archive
 from typing import Any, Dict
 
 from bot.llm.tools._types import ToolEntry
@@ -25,7 +26,7 @@ def daily_recap(hours: int = 24) -> str:
         return "Sunucu mesaj arşivi henüz oluşturulmamış veya erişilemiyor."
 
     try:
-        db = sqlite3.connect(_ARCHIVE_PATH, timeout=5)
+        db = open_archive(_ARCHIVE_PATH)
         db.row_factory = sqlite3.Row
 
         # Calculate time threshold (UTC)

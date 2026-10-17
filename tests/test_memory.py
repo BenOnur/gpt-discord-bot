@@ -98,6 +98,32 @@ class MemoryTests(unittest.TestCase):
         with self.memory.db() as db:
             self.assertEqual(db.execute("SELECT id FROM cursors WHERE channel=20").fetchone()[0],2)
 
+    def test_live_memory_precedes_old_backlog_with_periodic_backfill(self):
+        old = msg(1,content="old archive")
+        from datetime import timedelta
+        old.created_at = datetime.now(timezone.utc)-timedelta(days=365)
+        self.memory.save(old)
+        self.memory.save(msg(2,channel=21,content="today decision"))
+        self.assertEqual(self.memory.pending()[0]["id"],2)
+        with self.memory.db() as db:
+            db.execute("INSERT INTO calls VALUES(?,4)",(datetime.now(timezone.utc).date().isoformat(),))
+        self.assertEqual(self.memory.pending()[0]["id"],1)
+
+    def test_deleted_message_removed_from_fts_and_pending(self):
+        self.memory.save(msg(1,content="remove this secret"))
+        asyncio.run(self.memory.forget_message(1))
+        with self.memory.db() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM messages").fetchone()[0],0)
+            self.assertEqual(db.execute("SELECT count(*) FROM message_search WHERE message_search MATCH 'secret'").fetchone()[0],0)
+
+    def test_image_only_message_keeps_metadata_without_copying_image(self):
+        message=msg(content="")
+        message.attachments=[Obj(id=5,filename="photo.png",content_type="image/png")]
+        self.memory.save(message)
+        with self.memory.db() as db:
+            self.assertEqual(db.execute("SELECT filename FROM media").fetchone()[0],"photo.png")
+            self.assertIn("photo.png",db.execute("SELECT content FROM messages").fetchone()[0])
+
 
 if __name__ == "__main__":
     unittest.main()

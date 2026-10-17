@@ -9,6 +9,7 @@ import logging
 import os
 from pathlib import Path
 import sqlite3
+from bot.archive_access import open_archive
 from typing import Any
 
 from bot.llm.tools._types import ToolEntry
@@ -69,7 +70,7 @@ def get_user_profile(user_query: str) -> str:
         return "Sunucu mesaj arşivi henüz oluşturulmamış veya erişilemiyor."
 
     try:
-        db = sqlite3.connect(_ARCHIVE_PATH, timeout=5)
+        db = open_archive(_ARCHIVE_PATH)
         db.row_factory = sqlite3.Row
 
         if target_id and not target_name:

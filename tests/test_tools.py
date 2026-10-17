@@ -71,7 +71,7 @@ class ToolsTest(unittest.TestCase):
         self.assertIn("Test snippet description", formatted)
 
     def test_read_url_web_page_mock(self):
-        with patch("requests.get") as mock_get:
+        with patch("bot.llm.tools.read_url.fetch_public") as mock_get:
             mock_resp = MagicMock()
             mock_resp.status_code = 200
             mock_resp.content = b"<html><head><title>Haber Basligi</title></head><body><p>Bu onemli bir haber metnidir ve detaylar icerir.</p></body></html>"
@@ -81,7 +81,7 @@ class ToolsTest(unittest.TestCase):
             self.assertIn("onemli bir haber metnidir", res)
 
     def test_read_url_tweet_mock(self):
-        with patch("requests.get") as mock_get:
+        with patch("bot.llm.tools.read_url.fetch_public") as mock_get:
             mock_resp = MagicMock()
             mock_resp.status_code = 200
             mock_resp.json.return_value = {

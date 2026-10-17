@@ -54,6 +54,7 @@ def _get_db(db_path: str) -> sqlite3.Connection:
 def get_random_trivia(
     data_dir: str = "/var/lib/discord-ai-memory",
     search_query: Optional[str] = None,
+    ctx=None,
 ) -> Optional[dict[str, Any]]:
     """
     Pick a classic memorable message from active server members
@@ -66,6 +67,8 @@ def get_random_trivia(
 
     conn = _get_db(str(db_file))
     try:
+        from bot.archive_access import scope_connection
+        scope_connection(conn, ctx)
         cur = conn.cursor()
 
         # 1. Get top active human authors (excluding Deleted User and empty names)

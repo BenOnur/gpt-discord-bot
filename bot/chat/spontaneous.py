@@ -20,6 +20,7 @@ import time
 from typing import Any, Callable
 
 import discord
+from bot.llm.quota import completion
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,13 @@ class SpontaneousChatManager:
 
         # Ignore empty content or bot commands
         raw_text = (message.clean_content or message.content or "").strip()
+        serious = ("yardım", "araştır", "hatırlat", "kural", "kaydet", "sorun", "hata", "ciddi", "nasıl", "neden", "şarkı", "görev", "skill")
+        tracker = self.get_tracker(message.channel.id)
+        if any(word in raw_text.casefold() for word in serious):
+            tracker.last_serious_activity = time.time()
+            return False, "task or serious conversation"
+        if time.time() - getattr(tracker, "last_serious_activity", 0) < 300:
+            return False, "serious conversation cooldown"
         if not raw_text or raw_text.startswith(("/", "!", "$", ".", "-")):
             return False, "empty or command message"
 
@@ -193,7 +201,7 @@ async def maybe_handle_spontaneous(
 
     try:
         async with message.channel.typing():
-            response = await client.chat.completions.create(
+            response = await completion(client, priority="background",
                 model=model_name,
                 messages=api_messages,
                 max_tokens=100,

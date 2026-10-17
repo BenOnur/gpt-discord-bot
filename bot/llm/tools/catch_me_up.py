@@ -12,6 +12,7 @@ import logging
 import os
 from pathlib import Path
 import sqlite3
+from bot.archive_access import open_archive
 from typing import Any
 
 from bot.llm.tools._types import ToolEntry
@@ -39,7 +40,7 @@ def catch_me_up(target_user: str | None = None, hours: int | None = None) -> str
         user_id = author.id
 
     try:
-        db = sqlite3.connect(_ARCHIVE_PATH, timeout=5)
+        db = open_archive(_ARCHIVE_PATH)
         db.row_factory = sqlite3.Row
 
         # If user_id not resolved yet, attempt to find user by name

@@ -66,6 +66,8 @@ class PresenceStoreTests(unittest.TestCase):
         self.assertEqual(reopened.tracking_started_at(), started)
 
     def test_natural_language_queries_are_classified(self):
+        self.assertEqual(member_info_request("şu an dinlediğim şarkı hakkında araştırma yap"), "music_research")
+        self.assertEqual(member_info_request("Onur ne dinliyor"), "current_music")
         self.assertEqual(member_info_request("@bot Onur'un ne zaman sunucuya girdiğini söylesene"), "joined_at")
         self.assertEqual(member_info_request("Onur en son hangi oyunu oynamış?"), "last_game")
         self.assertEqual(member_info_request("Onur şu an ne oynuyor?"), "current_activity")

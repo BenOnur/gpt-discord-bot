@@ -5,11 +5,13 @@ Allows users to set natural language reminders to be pinged (tagged) later.
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import logging
 import os
 import sqlite3
 import zoneinfo
+import discord
 from pathlib import Path
 from typing import Any
 
@@ -17,9 +19,11 @@ from bot.llm.tools._types import ToolEntry
 from bot.llm.tools.discord_ctx import get_current_discord_context
 
 _DB_PATH = Path(os.getenv("DISCORD_MEMORY_DIR", "/var/lib/discord-ai-memory")) / "reminders.sqlite3"
+_SCHEDULER = None
 
 
-def _get_db() -> sqlite3.Connection:
+@contextmanager
+def _get_db():
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(_DB_PATH, timeout=10)
     db.row_factory = sqlite3.Row
@@ -37,7 +41,17 @@ def _get_db() -> sqlite3.Connection:
             );
         """)
         db.execute("CREATE INDEX IF NOT EXISTS idx_reminders_pending ON reminders(completed, trigger_at);")
-    return db
+        columns = {row[1] for row in db.execute("PRAGMA table_info(reminders)")}
+        for name, declaration in (("status", "TEXT DEFAULT 'pending'"), ("attempts", "INTEGER DEFAULT 0"), ("dedupe", "TEXT")):
+            if name not in columns:
+                db.execute(f"ALTER TABLE reminders ADD COLUMN {name} {declaration}")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS reminders_dedupe ON reminders(dedupe)")
+        db.execute("UPDATE reminders SET status='sent' WHERE completed=1 AND status='pending'")
+    try:
+        with db:
+            yield db
+    finally:
+        db.close()
 
 
 async def _send_reminder(
@@ -45,28 +59,40 @@ async def _send_reminder(
 ) -> None:
     """Async callback executed when reminder is due."""
     try:
+        with _get_db() as db:
+            row = db.execute("SELECT completed,status FROM reminders WHERE id=?", (reminder_id,)).fetchone()
+            if not row or row[0] or row[1] in ("cancelled", "sent"):
+                return
+            db.execute("UPDATE reminders SET attempts=attempts+1,status='sending' WHERE id=?", (reminder_id,))
         channel = bot.get_channel(channel_id)
         if not channel:
             channel = await bot.fetch_channel(channel_id)
         if channel:
-            await channel.send(f"<@{user_id}> ⏰ **Hatırlatıcı:** {reason}")
+            await asyncio.wait_for(channel.send(f"<@{user_id}> ⏰ **Hatırlatıcı:** {reason}",
+                                   allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=user_id)], roles=False, everyone=False)), 15)
             logging.info("Sent reminder id=%s to user=%s in channel=%s", reminder_id, user_id, channel_id)
+        else:
+            raise RuntimeError("Reminder channel unavailable")
+        with _get_db() as db:
+            db.execute("UPDATE reminders SET completed=1,status='sent' WHERE id=?", (reminder_id,))
     except Exception as e:
-        logging.error("Failed to send reminder %s: %s", reminder_id, e)
-    finally:
-        try:
-            with _get_db() as db:
-                db.execute("UPDATE reminders SET completed = 1 WHERE id = ?", (reminder_id,))
-        except Exception as e:
-            logging.error("Failed to mark reminder %s as completed: %s", reminder_id, e)
+        logging.error("Failed to send reminder %s (%s)", reminder_id, type(e).__name__)
+        with _get_db() as db:
+            attempts = db.execute("SELECT attempts FROM reminders WHERE id=?", (reminder_id,)).fetchone()[0]
+            db.execute("UPDATE reminders SET status=? WHERE id=?", ("failed" if attempts >= 3 else "pending", reminder_id))
+        if attempts < 3 and _SCHEDULER:
+            _SCHEDULER.add_job(_send_reminder, "date", run_date=datetime.now(timezone.utc) + timedelta(seconds=60 * attempts),
+                               id=f"reminder_{reminder_id}", args=[bot, channel_id, user_id, reason, reminder_id], replace_existing=True, misfire_grace_time=120)
 
 
 def restore_pending_reminders(bot: Any, scheduler: Any) -> None:
     """Load and schedule all uncompleted reminders from SQLite on bot startup."""
+    global _SCHEDULER
+    _SCHEDULER = scheduler
     try:
         now_ts = datetime.now(timezone.utc).timestamp()
         with _get_db() as db:
-            rows = db.execute("SELECT * FROM reminders WHERE completed = 0 ORDER BY trigger_at").fetchall()
+            rows = db.execute("SELECT * FROM reminders WHERE completed = 0 AND status NOT IN ('cancelled','failed') ORDER BY trigger_at").fetchall()
 
         restored_count = 0
         for r in rows:
@@ -84,6 +110,7 @@ def restore_pending_reminders(bot: Any, scheduler: Any) -> None:
                     id=job_id,
                     args=[bot, r["channel_id"], r["user_id"], r["reason"], r["id"]],
                     replace_existing=True,
+                    misfire_grace_time=120,
                 )
                 restored_count += 1
             except Exception as e:
@@ -97,10 +124,10 @@ def restore_pending_reminders(bot: Any, scheduler: Any) -> None:
 
 def set_reminder(duration_minutes: float, reminder_text: str) -> str:
     """Set a reminder to tag the user after duration_minutes."""
-    if duration_minutes <= 0:
+    if not 0 < duration_minutes <= 525600:
         return "Hatırlatıcı süresi 0'dan büyük olmalıdır."
 
-    clean_reason = reminder_text.strip()
+    clean_reason = reminder_text.strip()[:500]
     if not clean_reason:
         return "Hatırlatıcı için bir konu veya açıklama belirtilmedi."
 
@@ -110,6 +137,8 @@ def set_reminder(duration_minutes: float, reminder_text: str) -> str:
     guild = ctx.get("guild")
     bot = ctx.get("bot")
     scheduler = ctx.get("scheduler")
+    global _SCHEDULER
+    _SCHEDULER = scheduler or _SCHEDULER
 
     if not channel or not author:
         return f"Discord bağlamı bulunamadı. Hatırlatıcı kurulamadı."
@@ -120,9 +149,14 @@ def set_reminder(duration_minutes: float, reminder_text: str) -> str:
 
     # Persist in SQLite
     with _get_db() as db:
+        message = ctx.get("message")
+        dedupe = str(message.id) if message and isinstance(message.id, int) else None
+        existing = db.execute("SELECT id FROM reminders WHERE dedupe=?", (dedupe,)).fetchone() if dedupe else None
+        if existing:
+            return f"Bu mesaj için hatırlatıcı zaten kayıtlı: #{existing[0]}."
         cur = db.execute(
-            """INSERT INTO reminders (guild_id, channel_id, user_id, trigger_at, reason, completed, created_at)
-               VALUES (?, ?, ?, ?, ?, 0, ?)""",
+            """INSERT INTO reminders (guild_id, channel_id, user_id, trigger_at, reason, completed, created_at,dedupe)
+               VALUES (?, ?, ?, ?, ?, 0, ?, ?)""",
             (
                 guild.id if guild else None,
                 channel.id,
@@ -130,6 +164,7 @@ def set_reminder(duration_minutes: float, reminder_text: str) -> str:
                 trigger_ts,
                 clean_reason,
                 now_utc.isoformat(),
+                dedupe,
             ),
         )
         reminder_id = cur.lastrowid

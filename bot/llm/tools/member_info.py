@@ -13,12 +13,13 @@ import discord
 
 from bot.llm.tools._types import ToolEntry
 from bot.llm.tools.discord_ctx import get_current_discord_context
+from bot.storage import ClosingConnection
 
 logger = logging.getLogger(__name__)
 
 
 def _clean_name(value: str) -> str:
-    value = unicodedata.normalize("NFKD", value.casefold())
+    value = unicodedata.normalize("NFKD", value.casefold()).replace("ı", "i")
     value = "".join(c for c in value if not unicodedata.combining(c))
     value = re.sub(r"<@!?(\d+)>", r"\1", value)
     value = " ".join(re.sub(r"[^\w]+", " ", value).split())
@@ -42,14 +43,14 @@ class PresenceStore:
     def _connect(self):
         import sqlite3
 
-        connection = sqlite3.connect(self.path, timeout=5)
+        connection = sqlite3.connect(self.path, timeout=5, factory=ClosingConnection)
         connection.row_factory = sqlite3.Row
         return connection
 
     def _initialize(self) -> None:
         import sqlite3
 
-        with sqlite3.connect(self.path, timeout=5) as db:
+        with sqlite3.connect(self.path, timeout=5, factory=ClosingConnection) as db:
             db.execute("PRAGMA auto_vacuum=INCREMENTAL")
             db.execute("PRAGMA journal_mode=DELETE")
             db.execute("""
@@ -83,12 +84,16 @@ class PresenceStore:
         result: dict[tuple[int, str], tuple[int, str]] = {}
         for activity in activities or ():
             name = str(getattr(activity, "name", "") or "").strip()
+            if isinstance(activity, discord.Spotify):
+                name = f"{activity.title} — {', '.join(activity.artists)}"
             if not name or name.casefold() in {"custom status", "custom"}:
                 continue
             try:
                 activity_type = int(getattr(activity, "type", 0))
             except (TypeError, ValueError):
                 activity_type = 0
+            if activity_type == int(discord.ActivityType.custom):
+                continue
             # Activity names are the only rich-presence text retained; details,
             # party IDs, URLs, status text and other payload fields are discarded.
             name = name[:100]
@@ -158,6 +163,8 @@ class PresenceTracker:
             retention_days=settings.get("retention_days", 30),
             max_records=settings.get("max_records", 1000),
         ) if self.enabled else None
+        if self.store:
+            self.store.prune()
 
     def tracks(self, guild_id: int) -> bool:
         return self.enabled and (not self.guild_ids or guild_id in self.guild_ids)
@@ -217,6 +224,8 @@ def _resolve_member(target: str | None, ctx: dict[str, Any]):
 def member_info_request(text: str) -> str | None:
     """Classify clear join-date and activity questions for a deterministic fast path."""
     text = _clean_name(text)
+    if any(term in text for term in ("dinledigim", "dinliyorum", "dinledigi", "spotify", "hangi sarki", "ne dinliyor")):
+        return "music_research" if any(term in text for term in ("arastir", "bilgi", "hakkinda")) else "current_music"
     if any(term in text for term in ("ne zaman sunucuya girdi", "ne zaman sunucuya katildi", "sunucuya katilma tarihi", "ne zamandir sunucuda", "katildigi tarih")):
         return "joined_at"
     if any(term in text for term in ("oyun gecmisi", "etkinlik gecmisi", "rich presence", "presence gecmisi", "hangi oyunlari oynamis", "oynadigi oyunlar")):
@@ -248,6 +257,15 @@ async def _async_get_member_info(target: str | None, include: str, ctx: dict[str
         joined = "Discord bu üyenin sunucuya katılma tarihini vermedi."
 
     activities = PresenceStore._activities(getattr(member, "activities", ()))
+    if include in ("current_music", "music_research"):
+        for activity in getattr(member, "activities", ()):
+            if isinstance(activity, discord.Spotify):
+                return (f"{member.display_name} şu an Spotify'da {activity.title} — {', '.join(activity.artists)} dinliyor. "
+                        f"Albüm: {activity.album}. Kaynak: {activity.track_url}")
+        tracker = ctx.get("presence_tracker")
+        if not tracker or not tracker.enabled:
+            return "Etkinlik takibi şu an kapalı; Discord'da dinlediğin şarkıya erişemiyorum. İzin açılınca paylaşılan Spotify etkinliğini okuyabilirim."
+        return f"{member.display_name} için Discord'da paylaşılan güncel Spotify parçası görünmüyor. Etkinlik paylaşımını kontrol edebilir veya şarkının adını/linkini gönderebilirsin."
     current = list(activities.values())
     tracker: PresenceTracker | None = ctx.get("presence_tracker")
     records = []
@@ -311,12 +329,12 @@ MEMBER_INFO_SCHEMA = {
     "type": "function",
     "function": {
         "name": "get_member_info",
-        "description": "Use for natural-language questions about a Discord server member: when they joined, what they are playing now, their last known game, or their activity history observed by this bot. Resolve an actually tagged person first; otherwise pass their exact server display name or username. Do not claim old game history before bot tracking began.",
+        "description": "Read a Discord member's visible live Spotify song (current_music), join date, current activity, last game or observed activity history. For what I am listening to, use current_music with empty target (requesting user), then web_search the returned song/artist if research is requested. Never invent activity. Resolve a tagged member or exact name.",
         "parameters": {
             "type": "object",
             "properties": {
                 "target": {"type": "string", "description": "Member username, server display name, user ID, or omit when one person is tagged or the question is about the message author."},
-                "include": {"type": "string", "enum": ["summary", "joined_at", "current_activity", "last_game", "activity_history"], "description": "Select the data requested: join date, current activity, last game, observed history, or concise summary."},
+                "include": {"type": "string", "enum": ["summary", "joined_at", "current_activity", "current_music", "last_game", "activity_history"], "description": "Select join date, current activity, live Spotify song, last game or observed history."},
             },
         },
     },

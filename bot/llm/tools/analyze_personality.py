@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+from bot.archive_access import open_archive
 from typing import Any
 
 from bot.llm.tools._types import ToolEntry
@@ -75,7 +76,7 @@ def analyze_personality(user_query: str = "") -> str:
         target_name = clean_q
 
     try:
-        db = sqlite3.connect(_ARCHIVE_PATH, timeout=5)
+        db = open_archive(_ARCHIVE_PATH)
         db.row_factory = sqlite3.Row
 
         # If we have target_id, find primary username

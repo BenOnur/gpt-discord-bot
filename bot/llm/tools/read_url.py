@@ -11,6 +11,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 import requests
+from bot.safe_http import fetch_public
 
 from bot.llm.tools._types import ToolEntry
 
@@ -28,7 +29,7 @@ def _read_tweet(url: str) -> str | None:
     """Extract tweet text via Twitter's oEmbed endpoint without API keys."""
     try:
         oembed_url = f"https://publish.twitter.com/oembed?url={urllib.parse.quote(url)}"
-        resp = requests.get(oembed_url, timeout=8)
+        resp = fetch_public(oembed_url, timeout=8)
         if resp.status_code == 200:
             data = resp.json()
             author = data.get("author_name", "")
@@ -45,7 +46,7 @@ def _read_youtube(url: str) -> str | None:
     """Extract YouTube title and description via oEmbed."""
     try:
         oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(url)}&format=json"
-        resp = requests.get(oembed_url, timeout=8)
+        resp = fetch_public(oembed_url, timeout=8)
         if resp.status_code == 200:
             data = resp.json()
             title = data.get("title", "")
@@ -76,7 +77,7 @@ def read_url(url: str) -> str:
 
     # General web page / article
     try:
-        resp = requests.get(clean_url, headers=_HEADERS, timeout=12)
+        resp = fetch_public(clean_url, headers=_HEADERS, timeout=12)
         resp.raise_for_status()
 
         soup = BeautifulSoup(resp.content, "html.parser")

@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 import re
 import sqlite3
+from bot.archive_access import open_archive
+from bot.llm.quota import completion
 from typing import Any, Callable
 
 import discord
@@ -47,7 +49,7 @@ def get_user_training_data(
     if not db_file.exists():
         return [], [], None
 
-    conn = sqlite3.connect(str(db_file), timeout=5)
+    conn = open_archive(db_file)
     conn.row_factory = sqlite3.Row
     try:
         # 1. Expand author IDs via known clusters and name matching
@@ -192,7 +194,7 @@ async def generate_clone_reply(
         raise ValueError(f"Provider '{provider_name}' not configured")
 
     client = build_client_fn(provider_cfg)
-    response = await client.chat.completions.create(
+    response = await completion(client,
         model=model_name,
         messages=api_messages,
         max_tokens=300,

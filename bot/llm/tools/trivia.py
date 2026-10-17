@@ -45,7 +45,7 @@ async def _async_start_trivia(query: Optional[str], show_leaderboard: bool, ctx:
         await channel.send(embed=embed)
         return "Trivia liderlik tablosu kanala gönderildi."
 
-    trivia_data = await asyncio.to_thread(get_random_trivia, data_dir=data_dir, search_query=query)
+    trivia_data = await asyncio.to_thread(get_random_trivia, data_dir=data_dir, search_query=query, ctx=ctx)
     if not trivia_data:
         return "Sunucu arşivinde trivia için uygun mesaj bulunamadı veya arama kriteriyle eşleşen mesaj yok."
 

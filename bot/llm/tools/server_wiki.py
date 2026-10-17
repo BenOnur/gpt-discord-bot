@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+from bot.archive_access import open_archive
 from typing import Any
 
 from bot.llm.tools._types import ToolEntry
@@ -36,7 +37,7 @@ def server_wiki(query: str, category: str = "all") -> str:
     # 1. Search SQLite Message Archive
     if _ARCHIVE_PATH.exists():
         try:
-            db = sqlite3.connect(_ARCHIVE_PATH, timeout=5)
+            db = open_archive(_ARCHIVE_PATH)
             db.row_factory = sqlite3.Row
 
             words = [w for w in re.findall(r"\w+", clean_query.lower()) if len(w) > 2]
@@ -89,6 +90,15 @@ def server_wiki(query: str, category: str = "all") -> str:
             search_regex = re.compile(re.escape(clean_query), re.IGNORECASE)
             for md_file in _VAULT_PATH.rglob("*.md"):
                 try:
+                    from bot.archive_access import allowed_channels
+                    from bot.llm.tools.discord_ctx import get_current_discord_context
+                    ctx = get_current_discord_context()
+                    guild_id = getattr(ctx.get("guild"), "id", 0)
+                    parts = md_file.relative_to(_VAULT_PATH).parts
+                    if len(parts) < 3 or parts[0] != f"guild-{guild_id}" or not parts[1].startswith("channel-"):
+                        continue
+                    if int(parts[1].removeprefix("channel-")) not in allowed_channels(ctx):
+                        continue
                     text = md_file.read_text(encoding="utf-8", errors="ignore")
                     if search_regex.search(text):
                         # Extract relevant paragraphs

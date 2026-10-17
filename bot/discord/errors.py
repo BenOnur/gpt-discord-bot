@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
+import time
 from typing import Any
 
 import discord
 
 from bot.llm.errors import parse_error_message
+_last_notifications = {}
 
 
 async def notify_admin_error(
@@ -19,14 +21,21 @@ async def notify_admin_error(
     Send a concise error notification to all configured admins.
     """
     try:
+        key = (type(error).__name__, context)
+        now = time.monotonic()
+        if now - _last_notifications.get(key, -600) < 300:
+            return
+        _last_notifications[key] = now
+        if len(_last_notifications) > 100:
+            _last_notifications.clear()
         admin_ids = config.get("permissions", {}).get("users", {}).get("admin_ids", [])
         if not admin_ids:
             return
 
         msg = (
-            "🤖 **Bot Error Notification**\n"
-            f"⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"📝 Context: {context}\n\nError: {parse_error_message(error)}"
+            "🤖 **Bot hata bildirimi**\n"
+            f"⏰ Zaman: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"📝 Bağlam: {context}\n\nHata: {parse_error_message(error)}"
         )
         for admin_id in admin_ids:
             try:
