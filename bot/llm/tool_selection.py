@@ -3,11 +3,26 @@ from bot.assistant_memory import normalize
 import re
 
 
+def needs_fresh_search(text):
+    """High-confidence current-affairs intent that must be verified live."""
+    text = normalize(text)
+    # Reminder phrasing often contains "haber" but is not a news request.
+    if any(term in text for term in ("hatirlat", "saat sonra", "dakika sonra", "dk sonra", "haber ver")):
+        return False
+    markers = (
+        "haber", "haberler", "haberi", "guncel", "son durum", "son gelisme", "son dakika",
+        "bugun", "dun", "su an", "simdi", "en son", "yeni cikti",
+        "resmi aciklama", "ne zaman aciklan", "kim kazandi",
+    )
+    return any(marker in text for marker in markers)
+
+
 def select_tools(text, available, procedures=()):
     text = normalize(text)
     # Member observation is a core capability, not a keyword-gated optional tool.
     selected = {"manage_memory", "web_search", "get_current_time", "get_member_info"}
     groups = [
+        (("haber", "guncel", "son durum", "son gelisme", "son dakika", "bugun", "su an", "en son", "resmi aciklama"), ("web_search",)),
         (("hatirlat", "etiketle", "ertele", "dakika", "saat sonra"), ("set_reminder", "manage_reminders")),
         (("dinle", "sarki", "spotify", "oyun", "oynuyor", "katildi", "sunucuya"), ("get_member_info",)),
         (("fotograf", "avatar", "profil resmi"), ("send_profile_avatar",)),

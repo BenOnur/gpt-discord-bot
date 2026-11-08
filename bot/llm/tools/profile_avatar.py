@@ -28,6 +28,7 @@ def looks_like_avatar_request(text: str) -> bool:
     normalized = _normalize(text)
     mentions_image = any(term in normalized for term in (
         "profil fotograf", "profil resmi", "profil fotosu", "avatar",
+        "fotografini", "fotografimi", "fotosunu", "resmini", "resmimi", "fotografi", "fotosu",
     ))
     asks_to_send = any(term in normalized for term in (
         "gonder", "gondersene", "yolla", "yollasana", "at", "atsana",
@@ -60,7 +61,7 @@ def _resolve_member(target: str | None, ctx: dict[str, Any]):
     query = _normalize(target or "")
     if not query:
         content = _normalize(getattr(message, "content", ""))
-        if any(word in content.split() for word in ("ben", "benim", "kendim", "kendimin")):
+        if any(word in content.split() for word in ("ben", "benim", "kendim", "kendimin", "fotografimi", "resmimi")):
             author = ctx.get("author")
             if author is not None:
                 return author, None
@@ -78,6 +79,18 @@ def _resolve_member(target: str | None, ctx: dict[str, Any]):
             return next(iter(unique.values())), None
         if len(unique) > 1:
             return None, "Birden fazla üyeyle eşleşti. İstediğin kişiyi etiketle."
+        # If no other member was named or tagged, a possessive photo request is
+        # naturally addressed to this bot; explicit member matches win first.
+        if bot is not None and getattr(bot, "user", None) is not None:
+            bot_user = bot.user
+            bot_names = {
+                _normalize(getattr(bot_user, name, "") or "")
+                for name in ("name", "display_name", "global_name")
+            }
+            if any(name and re.search(rf"(?<!\w){re.escape(name)}(?!\w)", content) for name in bot_names):
+                return bot_user, None
+            if any(term in content for term in ("fotografini", "fotosunu", "resmini", "fotografi", "fotosu")):
+                return bot_user, None
         return None, "Kimin profil fotoğrafını istediğini bulamadım. O kişiyi etiketle ya da adını yaz."
 
     if query.isdigit():
