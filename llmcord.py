@@ -1372,7 +1372,8 @@ async def on_message(new_msg: discord.Message) -> None:
     # Search current-affairs requests before generation. Exposing web_search as
     # an optional function alone allowed models to answer news from stale memory.
     from bot.llm.tool_selection import needs_fresh_search
-    if needs_fresh_search(new_msg.content):
+    from bot.llm.tools.discord_ctx import get_current_discord_context
+    if needs_fresh_search(new_msg.content) and not get_current_discord_context().get("live_research"):
         query = re.sub(r"<@!?[0-9]+>", " ", new_msg.content).strip()
         try:
             from bot.llm.tools.web_search import web_search, format_search_results
