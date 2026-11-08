@@ -1266,14 +1266,24 @@ async def on_message(new_msg: discord.Message) -> None:
                 )
 
                 try:
-                    if (
-                        curr_msg.reference is None
-                        and discord_bot.user.mention not in curr_msg.content
-                        and (prev := ([m async for m in curr_msg.channel.history(before=curr_msg, limit=1)] or [None])[0])
-                        and prev.type in (discord.MessageType.default, discord.MessageType.reply)
-                        and prev.author == (discord_bot.user if is_dm else curr_msg.author)
-                    ):
-                        curr_node.parent_msg = prev
+                    if curr_msg.reference is None:
+                        prev = ([m async for m in curr_msg.channel.history(before=curr_msg, limit=1)] or [None])[0]
+                        if prev and prev.type in (discord.MessageType.default, discord.MessageType.reply):
+                            if discord_bot.user.mention not in curr_msg.content and prev.author == (discord_bot.user if is_dm else curr_msg.author):
+                                curr_node.parent_msg = prev
+                            elif not is_dm and discord_bot.user.mention in curr_msg.content and prev.author == discord_bot.user:
+                                # Consecutive @bot messages are a conversation only
+                                # when the immediately preceding bot reply belongs
+                                # to this same user. Never borrow another member's turn.
+                                cursor = prev
+                                for _ in range(max_messages):
+                                    if cursor.author.id == curr_msg.author.id:
+                                        curr_node.parent_msg = prev
+                                        break
+                                    if cursor.author != discord_bot.user or not cursor.reference:
+                                        break
+                                    parent_id = cursor.reference.message_id
+                                    cursor = cursor.reference.cached_message or await cursor.channel.fetch_message(parent_id)
                     else:
                         is_thread = curr_msg.channel.type == discord.ChannelType.public_thread
                         is_thread_start = is_thread and curr_msg.reference is None and curr_msg.channel.parent.type == discord.ChannelType.text
@@ -1303,11 +1313,8 @@ async def on_message(new_msg: discord.Message) -> None:
             if curr_node.fetch_parent_failed or (curr_node.parent_msg and len(messages) == max_messages):
                 user_warnings.add(f"⚠️ Only using last {len(messages)} message{'s' if len(messages) != 1 else ''}")
             
-            # Stop following parent chain if we reach a bot message to prevent feedback loop
-            # This prevents the bot from seeing its own previous responses and responding to them
-            if curr_msg.author == discord_bot.user:
-                break
-            
+            # Assistant replies are bridges in the conversation, not the end of
+            # history. Follow their reference to recover the user's prior turn.
             curr_msg = curr_node.parent_msg
 
     logging.info(f"Message (uid:{new_msg.author.id}, att:{len(new_msg.attachments)}, len:{len(messages)})")
