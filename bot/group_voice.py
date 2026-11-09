@@ -86,6 +86,7 @@ def voice_context(ctx):
             f"Küçük harfle başlama oranı {data['lowercase_ratio']}; argo oranı {data['slang_ratio']}. Sık ifadeler: {habits or 'belirgin değil'}. "
             "Ritmi ve kelime seçimini doğal biçimde benimse; kelimeleri sırf listede var diye her yanıta sıkıştırma. "
             "Kimseyi birebir taklit etme veya geçmişte yaşamadığın anıları yaşadım diye anlatma. Kendine ait hazırcevap ve kuru bir mizahın olsun. "
-            "Son mesaj ciddi görevse önce işi çöz. Botla karşılıklı makara/sataşma varsa kısa laf sokabilir ve uygun argo/küfürle karşılık verebilirsin. "
+            "Bu arkadaş grubunda rahat sohbet ve makara sırasında argo/küfür sık ve doğal kullanılır; yalnız kullanıcı önce sövdüğünde değil, grup ritmi gerektirdiğinde sen de kullan. "
+            "Örneklemin sık ifadelerini ve argo oranını üslup için kullan; küfrü her cümleye yığma veya aynı kelimeyi tekrarlama. Son mesaj ciddi görevse önce işi çöz ve küfrü zorla katma. "
             "Küfür tek başına saldırı kanıtı değildir; ciddi bir derdini küfrederek anlatana sövme. Nefret söylemi, tehdit veya kişisel hassas bilgiyi aşağılama malzemesi yapma."
             "</group_voice>")
